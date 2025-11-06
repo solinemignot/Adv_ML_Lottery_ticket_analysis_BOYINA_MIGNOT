@@ -63,14 +63,27 @@ def apply_mask(model, mask):
         for name, param in model.named_parameters():
             param *= mask[name]
 
+def create_winning_ticket(model, mask, theta0):
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            param.data = theta0[name] * mask[name]
+    print(f"Layer {name}: {param.numel()} weights, {(param == 0).sum().item()} zeros")
+    return model
+
+def calculate_actual_prune_percent(model):
+    total_weights = sum(p.numel() for p in model.parameters() if p.dim() > 1)
+    zero_weights = sum((p == 0).sum().item() for p in model.parameters() if p.dim() > 1)
+    return 100 * zero_weights / total_weights
+
 
 ########################### Lottery Ticket Algorithm #################################################################
 
-# Step 1: train the randomly initialized neural network 
+# Step 1 and 2: train the randomly initialized neural network 
 def dense_neural_network_MNIST():
+    print("Step 1 and 2: training the randomly initialized neural network ")
     input_size = 784   
     hidden_size = 128
-    output_size = 10   
+    output_size = 10 
     model = SimpleNN(input_size, hidden_size, output_size)
 
     batch_size = 64
@@ -82,18 +95,55 @@ def dense_neural_network_MNIST():
     training_the_model(model, train_loader, optimizer, criterion)
     dense_acc = evaluate_the_model(model, test_loader)
 
-    return model, get_weights(model), get_weights(SimpleNN()), train_loader, test_loader
+    return model, get_weights(model), get_weights(SimpleNN(input_size, hidden_size, output_size)), train_loader, test_loader
 
 
-# Step 2: Prune the smallest weights
+# Step 3: Prune the smallest weights
 def prune_by_magnitude(model, prune_percent=20):
-    all_weights = torch.cat([param.data.view(-1).abs() for param in model.parameters()])
-    threshold = torch.quantile(all_weights, prune_percent / 100.0)
-
+    # Collect all weights in a single tensor
+    all_weights = torch.cat([param.data.abs().view(-1) for param in model.parameters() if param.dim() > 1])
+    k = int(len(all_weights) * prune_percent / 100)
+    threshold = torch.topk(all_weights, k, largest=False).values.max()
+    print(f"Pruning threshold: {threshold.item()}")
     mask = {}
     for name, param in model.named_parameters():
-        mask[name] = (param.abs() > threshold).float()
+        if param.dim() > 1:  # Only prune weights, not biases
+            mask[name] = (param.data.abs() > threshold).float()
+            print(f"Layer {name}: {mask[name].numel()} weights, {(mask[name] == 0).sum().item()} zeros")
+        else:
+            mask[name] = torch.ones_like(param)
+
     return mask
+
+
+# Step 4: creating the winning ticket f(x; m⊙theta_0)
+def iterative_pruning(prune_percent=20, rounds=3, epochs_per_round=10, lr=0.001):
+    model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST()
+    print("Step 4: Creating the Winning ticket")
+    criterion = nn.CrossEntropyLoss()
+    for round in range(rounds):
+        print(f"\n--- Round {round + 1}/{rounds} ---")
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        acc = evaluate_the_model(model, test_loader)
+        print(f"Accuracy after training (before pruning): {acc:.2f}%")
+        mask = prune_by_magnitude(model, prune_percent)
+        model = create_winning_ticket(model, mask, theta0)
+        
+        effective_prune_percent = 100 * (1 - (1 - prune_percent / 100) ** (round + 1))
+        print(f"Effective pruning percentage (Method 1): {effective_prune_percent:.2f}%")
+        actual_prune_percent = calculate_actual_prune_percent(model)
+        print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
+
+        acc = evaluate_the_model(model, test_loader)
+
+    final_acc = evaluate_the_model(model, test_loader)
+    print(f"Final accuracy of the winning ticket: {final_acc:.2f}%")
+    return model
+
+
+iterative_pruning()
+
 
 
 
