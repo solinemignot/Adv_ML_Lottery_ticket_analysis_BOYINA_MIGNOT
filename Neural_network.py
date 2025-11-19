@@ -52,7 +52,7 @@ def evaluate_the_model(model, test_loader):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
     acc = 100 * correct / total
-    print(f"Test Accuracy: {acc:.2f}%")
+    #print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
 def get_weights(model):
@@ -63,10 +63,10 @@ def apply_mask(model, mask):
         for name, param in model.named_parameters():
             param *= mask[name]
 
-def create_winning_ticket(model, mask, theta0):
+def create_winning_ticket(model, mask, theta):
     with torch.no_grad():
         for name, param in model.named_parameters():
-            param.data = theta0[name] * mask[name]
+            param.data = theta[name] * mask[name]
     print(f"Layer {name}: {param.numel()} weights, {(param == 0).sum().item()} zeros")
     return model
 
@@ -75,12 +75,15 @@ def calculate_actual_prune_percent(model):
     zero_weights = sum((p == 0).sum().item() for p in model.parameters() if p.dim() > 1)
     return 100 * zero_weights / total_weights
 
+def count_zeros(model):
+    return sum((p == 0).sum().item() for p in model.parameters() if p.dim() > 1)
+
 
 ########################### Lottery Ticket Algorithm #################################################################
 
 # Step 1 and 2: train the randomly initialized neural network 
 def dense_neural_network_MNIST():
-    print("Step 1 and 2: training the randomly initialized neural network ")
+    print("\nStep 1 and 2: training the randomly initialized neural network ")
     input_size = 784   
     hidden_size = 128
     output_size = 10 
@@ -100,7 +103,6 @@ def dense_neural_network_MNIST():
 
 # Step 3: Prune the smallest weights
 def prune_by_magnitude(model, prune_percent=20):
-    # Collect all weights in a single tensor
     all_weights = torch.cat([param.data.abs().view(-1) for param in model.parameters() if param.dim() > 1])
     k = int(len(all_weights) * prune_percent / 100)
     threshold = torch.topk(all_weights, k, largest=False).values.max()
@@ -112,35 +114,37 @@ def prune_by_magnitude(model, prune_percent=20):
             print(f"Layer {name}: {mask[name].numel()} weights, {(mask[name] == 0).sum().item()} zeros")
         else:
             mask[name] = torch.ones_like(param)
-
     return mask
 
 
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning(prune_percent=20, rounds=3, epochs_per_round=10, lr=0.001):
+def iterative_pruning(prune_percent=10, rounds=8, epochs_per_round=10, lr=0.001):
     model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST()
-    print("Step 4: Creating the Winning ticket")
+    print("\nStep 4: Creating the Winning ticket")
+    print(f"Number of zeros before pruning: {count_zeros(model)}")
+
     criterion = nn.CrossEntropyLoss()
+
     for round in range(rounds):
         print(f"\n--- Round {round + 1}/{rounds} ---")
+        effective_prune_percent = 100 * (1 - (1 - prune_percent / 100) ** (round + 1))
+        print(f"Effective pruning percentage (Method 1): {effective_prune_percent:.2f}%")
+        # Prune
+        mask = prune_by_magnitude(model, effective_prune_percent)
+        # Reset to initial weights
+        model = create_winning_ticket(model, mask, theta0)
+
+        actual_prune_percent = calculate_actual_prune_percent(model)
+        print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
+        # Evaluate (no retraining)
+        acc = evaluate_the_model(model, test_loader)
+        print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+        # Train the pruned model
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
         acc = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after training (before pruning): {acc:.2f}%")
-        mask = prune_by_magnitude(model, prune_percent)
-        model = create_winning_ticket(model, mask, theta0)
-        
-        effective_prune_percent = 100 * (1 - (1 - prune_percent / 100) ** (round + 1))
-        print(f"Effective pruning percentage (Method 1): {effective_prune_percent:.2f}%")
-        actual_prune_percent = calculate_actual_prune_percent(model)
-        print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
-
-        acc = evaluate_the_model(model, test_loader)
-
-    final_acc = evaluate_the_model(model, test_loader)
-    print(f"Final accuracy of the winning ticket: {final_acc:.2f}%")
+        print(f"Accuracy after retraining: {acc:.2f}%")
     return model
-
 
 iterative_pruning()
 
