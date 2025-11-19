@@ -133,20 +133,23 @@ def prune_by_magnitude(model, prune_percent=20):
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
 def iterative_pruning(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True):
     df_accuracies = []
-    df_accuracies, model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
+    df_accuracies, model, _, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
     criterion = nn.CrossEntropyLoss()
-    prune_percent = total_prune_percent**(1/rounds)
+    prune_percent = 1 - (1 - total_prune_percent/100)**(1/rounds)
+    remaining_weights_percent = 1
+    current_prune_percent = 0
     print(f"At each round, we are pruning : {round(prune_percent,2)}% of the weights.")
 
     for pruning_round in range(rounds):
         print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
-        current_prune_percent = prune_percent**(pruning_round + 1)
-        print(f"Current pruning percentage (Method 1): {current_prune_percent:.2f}%")
+        current_prune_percent += remaining_weights_percent * prune_percent
+        remaining_weights_percent = 1 - current_prune_percent
+        print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
         # Pruning
-        mask = prune_by_magnitude(model, current_prune_percent)
+        mask = prune_by_magnitude(model, current_prune_percent*100)
         if LTH : #Then we keep the initial weights
             # Reset to initial weights
             model = create_winning_ticket(model, mask, theta0)
