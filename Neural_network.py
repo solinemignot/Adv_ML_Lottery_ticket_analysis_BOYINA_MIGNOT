@@ -38,7 +38,7 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs = 1
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}')
+        #print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}')
 
 def evaluate_the_model(model, test_loader):
     model.eval()
@@ -52,7 +52,7 @@ def evaluate_the_model(model, test_loader):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
     acc = 100 * correct / total
-    #print(f"Test Accuracy: {acc:.2f}%")
+    print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
 def get_weights(model):
@@ -97,7 +97,7 @@ def dense_neural_network_MNIST():
 
     training_the_model(model, train_loader, optimizer, criterion)
     dense_acc = evaluate_the_model(model, test_loader)
-
+    print(f"Initial accuracy : {round(dense_acc, 2)}%.")
     return model, get_weights(model), get_weights(SimpleNN(input_size, hidden_size, output_size)), train_loader, test_loader
 
 
@@ -106,7 +106,7 @@ def prune_by_magnitude(model, prune_percent=20):
     all_weights = torch.cat([param.data.abs().view(-1) for param in model.parameters() if param.dim() > 1])
     k = int(len(all_weights) * prune_percent / 100)
     threshold = torch.topk(all_weights, k, largest=False).values.max()
-    print(f"Pruning threshold: {threshold.item()}")
+    print(f"Pruning threshold: {round(float(threshold.item()),2)}")
     mask = {}
     for name, param in model.named_parameters():
         if param.dim() > 1:  # Only prune weights, not biases
@@ -118,22 +118,24 @@ def prune_by_magnitude(model, prune_percent=20):
 
 
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning(prune_percent=10, rounds=8, epochs_per_round=10, lr=0.001):
+def iterative_pruning(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001):
     model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST()
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
     criterion = nn.CrossEntropyLoss()
+    prune_percent = total_prune_percent**(1/rounds)
+    print(f"At each round, we are pruning : {round(prune_percent,2)}% of the weights.")
 
-    for round in range(rounds):
-        print(f"\n--- Round {round + 1}/{rounds} ---")
-        effective_prune_percent = 100 * (1 - (1 - prune_percent / 100) ** (round + 1))
-        print(f"Effective pruning percentage (Method 1): {effective_prune_percent:.2f}%")
-        # Prune
-        mask = prune_by_magnitude(model, effective_prune_percent)
+    for pruning_round in range(rounds):
+        print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
+        current_prune_percent = prune_percent**(pruning_round + 1)
+        print(f"Current pruning percentage (Method 1): {current_prune_percent:.2f}%")
+        # Pruning
+        mask = prune_by_magnitude(model, current_prune_percent)
         # Reset to initial weights
         model = create_winning_ticket(model, mask, theta0)
-
+        # Making sure enough the right amount are getting pruned
         actual_prune_percent = calculate_actual_prune_percent(model)
         print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
         # Evaluate (no retraining)
