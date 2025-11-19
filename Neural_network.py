@@ -1,3 +1,5 @@
+import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,7 +54,7 @@ def evaluate_the_model(model, test_loader):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
     acc = 100 * correct / total
-    print(f"Test Accuracy: {acc:.2f}%")
+    #print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
 def get_weights(model):
@@ -70,6 +72,16 @@ def create_winning_ticket(model, mask, theta):
     print(f"Layer {name}: {param.numel()} weights, {(param == 0).sum().item()} zeros")
     return model
 
+def randomly_reinitialize(model, mask):
+    for name, param in model.named_parameters():
+        if name in mask:
+            param.data *= mask[name] 
+            if param.dim() > 1:
+                with torch.no_grad():
+                    unpruned_mask = (mask[name] == 1).float()
+                    param.data = param.data * unpruned_mask + torch.randn_like(param.data) * unpruned_mask
+    return model
+
 def calculate_actual_prune_percent(model):
     total_weights = sum(p.numel() for p in model.parameters() if p.dim() > 1)
     zero_weights = sum((p == 0).sum().item() for p in model.parameters() if p.dim() > 1)
@@ -82,7 +94,7 @@ def count_zeros(model):
 ########################### Lottery Ticket Algorithm #################################################################
 
 # Step 1 and 2: train the randomly initialized neural network 
-def dense_neural_network_MNIST():
+def dense_neural_network_MNIST(df_accuracies):
     print("\nStep 1 and 2: training the randomly initialized neural network ")
     input_size = 784   
     hidden_size = 128
@@ -98,7 +110,8 @@ def dense_neural_network_MNIST():
     training_the_model(model, train_loader, optimizer, criterion)
     dense_acc = evaluate_the_model(model, test_loader)
     print(f"Initial accuracy : {round(dense_acc, 2)}%.")
-    return model, get_weights(model), get_weights(SimpleNN(input_size, hidden_size, output_size)), train_loader, test_loader
+    df_accuracies.append({"Round": "Initial model", "Test Accuracy (with training)": dense_acc})
+    return df_accuracies, model, get_weights(model), get_weights(SimpleNN(input_size, hidden_size, output_size)), train_loader, test_loader
 
 
 # Step 3: Prune the smallest weights
@@ -111,15 +124,16 @@ def prune_by_magnitude(model, prune_percent=20):
     for name, param in model.named_parameters():
         if param.dim() > 1:  # Only prune weights, not biases
             mask[name] = (param.data.abs() > threshold).float()
-            print(f"Layer {name}: {mask[name].numel()} weights, {(mask[name] == 0).sum().item()} zeros")
+            #print(f"Layer {name}: {mask[name].numel()} weights, {(mask[name] == 0).sum().item()} zeros")
         else:
             mask[name] = torch.ones_like(param)
     return mask
 
 
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001):
-    model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST()
+def iterative_pruning(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True):
+    df_accuracies = []
+    df_accuracies, model, theta_j, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
@@ -133,26 +147,30 @@ def iterative_pruning(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=
         print(f"Current pruning percentage (Method 1): {current_prune_percent:.2f}%")
         # Pruning
         mask = prune_by_magnitude(model, current_prune_percent)
-        # Reset to initial weights
-        model = create_winning_ticket(model, mask, theta0)
-        # Making sure enough the right amount are getting pruned
+        if LTH : #Then we keep the initial weights
+            # Reset to initial weights
+            model = create_winning_ticket(model, mask, theta0)
+        else: #If we are not doing LTH, then the initial weights are random !! 
+            model = randomly_reinitialize(model, mask)
+
+        # Making sure enough the right amount are getting pruned 
         actual_prune_percent = calculate_actual_prune_percent(model)
         print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
+
         # Evaluate (no retraining)
         acc = evaluate_the_model(model, test_loader)
         print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+
         # Train the pruned model
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
-        acc = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after retraining: {acc:.2f}%")
-    return model
 
-iterative_pruning()
-
-
-
-
+        #Test Accuracies
+        acc_post_training = evaluate_the_model(model, test_loader)
+        print(f"Accuracy after retraining: {acc_post_training:.2f}%")
+        df_accuracies.append({"Round": f"Round {pruning_round + 1}", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
+        
+    return df_accuracies, model
 
 
 
