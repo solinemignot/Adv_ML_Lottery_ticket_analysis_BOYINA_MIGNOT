@@ -1,6 +1,3 @@
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -52,9 +49,9 @@ def dense_neural_network_MNIST(df_accuracies):
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True):
+def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True, strategy_1 = True):
     df_accuracies = []
-    df_accuracies, model, _, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
+    df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
@@ -69,25 +66,25 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
         current_prune_percent += remaining_weights_percent * prune_percent
         remaining_weights_percent = 1 - current_prune_percent
         print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
-        # Pruning
+        
         mask = prune_by_magnitude(model, current_prune_percent*100)
-        if LTH : #Then we keep the initial weights
-            # Reset to initial weights
-            model = create_winning_ticket(model, mask, theta0)
-        else: #If we are not doing LTH, then the initial weights are random !! 
+        if LTH : 
+            if strategy_1 or (pruning_round + 1 == rounds): #Then we keep the initial weights
+                model = create_winning_ticket(model, mask, theta0)
+            else : #Then we keep the same weights as previously trained, but with the mask, except at the last round
+                model = create_winning_ticket(model, mask, thetaj)
+        else: #If we are not doing LTH, then the initial weights are random 
             model = randomly_reinitialize(model, mask)
 
-        # Making sure enough the right amount are getting pruned 
         actual_prune_percent = calculate_actual_prune_percent(model)
-        print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
+        print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
 
-        # Evaluate (no retraining)
         acc = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+        #print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
 
-        # Train the pruned model
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        thetaj = get_weights(model)
 
         #Test Accuracies
         acc_post_training = evaluate_the_model(model, test_loader)
