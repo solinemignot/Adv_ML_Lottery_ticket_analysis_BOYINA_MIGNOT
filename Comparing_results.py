@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 import time
-from Neural_network import *
+from Neural_networks import *
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 ############## Comparing initialization after pruning ##########################################################
 """
@@ -18,21 +19,20 @@ def comparing_initialization_after_pruning(amount_of_repeats, total_prune_percen
     df_accuracies_LTH = pd.DataFrame()
     df_accuracies_not_LTH = pd.DataFrame()
 
-    for i in range (amount_of_repeats):
-        print(f"Iteration for average : {i + 1}/{amount_of_repeats}")
-
+    
+    for i in tqdm(range(amount_of_repeats)):
+        print(f"\nIteration for average : {i + 1}/{amount_of_repeats}")
         #All the iterations for the LTH method
-        df_acc_LTH,_ = iterative_pruning(total_prune_percent=total_prune_percent, rounds=rounds)
+        df_acc_LTH,_ = iterative_pruning_MNIST(total_prune_percent=total_prune_percent, rounds=rounds)
         for j in range (len(df_acc_LTH)):
             df_acc_LTH[j]['Iteration'] = i + 1
         df_accuracies_LTH = pd.concat([df_accuracies_LTH, pd.DataFrame(df_acc_LTH)])
 
         #All the iterations for the LTH method
-        df_acc_not_LTH,_ = iterative_pruning(total_prune_percent=total_prune_percent, rounds=rounds)
+        df_acc_not_LTH,_ = iterative_pruning_MNIST(total_prune_percent=total_prune_percent, rounds=rounds, LTH = False)
         for j in range (len(df_acc_not_LTH)):
             df_acc_not_LTH[j]['Iteration'] = i + 1
         df_accuracies_not_LTH = pd.concat([df_accuracies_not_LTH, pd.DataFrame(df_acc_not_LTH)])
-
     df_avg_accuracies_LTH = []
     df_avg_accuracies_not_LTH = []
     for pruning_round in range (rounds):
@@ -53,19 +53,27 @@ def comparing_initialization_after_pruning(amount_of_repeats, total_prune_percen
     df_avg_accuracies_LTH = pd.DataFrame(df_avg_accuracies_LTH)
     df_avg_accuracies_not_LTH = pd.DataFrame(df_avg_accuracies_not_LTH)
 
-    plt.plot(df_avg_accuracies_LTH['Pruning Percentage'], df_avg_accuracies_LTH['Avg Test Accuracy'], label = 'LTH')
-    plt.plot(df_avg_accuracies_not_LTH['Pruning Percentage'], df_avg_accuracies_not_LTH['Avg Test Accuracy'], label = 'Random initialization')
+    plt.errorbar(df_avg_accuracies_LTH['Pruning Percentage'],
+                df_avg_accuracies_LTH['Avg Test Accuracy'],
+                yerr=[df_avg_accuracies_LTH['Avg Test Accuracy'] - df_avg_accuracies_LTH['Min Test Accuracy'],
+                        df_avg_accuracies_LTH['Max Test Accuracy'] - df_avg_accuracies_LTH['Avg Test Accuracy']],
+                label='LTH')
+    plt.errorbar(df_avg_accuracies_not_LTH['Pruning Percentage'],
+                df_avg_accuracies_not_LTH['Avg Test Accuracy'],
+                yerr=[df_avg_accuracies_not_LTH['Avg Test Accuracy'] - df_avg_accuracies_not_LTH['Min Test Accuracy'],
+                        df_avg_accuracies_not_LTH['Max Test Accuracy'] - df_avg_accuracies_not_LTH['Avg Test Accuracy']],
+                label='Random Initialization')
     plt.xlabel("Pruning Percentage")
     plt.ylabel("Test Accuracy")
     plt.title("Comparing the initialization post pruning.")
     plt.legend()
+    plt.grid(True)
     plt.savefig("plots/randomly_initialized.png")
 
     print((time.time()- beginning)/60)#XXx remove
 
 
-comparing_initialization_after_pruning(amount_of_repeats = 5, rounds = 7)
-
+comparing_initialization_after_pruning(amount_of_repeats = 2, rounds = 4)
 
 
 
