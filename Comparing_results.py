@@ -114,7 +114,6 @@ total_prune_percent = 99
 rounds = 7
 amount_of_repeats = 5
 
-# xxx - Fix the alg so that it works and indeed does call the methods at all rounds, not just the values that has just been created
 def method_1_LTH_strategy1():
     return iterative_pruning_MNIST(total_prune_percent=total_prune_percent, rounds=rounds, LTH=True)
 

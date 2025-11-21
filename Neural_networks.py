@@ -95,7 +95,6 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
 
 ########################### Convolutional Neural Network - for CIFAR - 10 #################################################################
-#xxx - this whole section has just begun to exist so is not completely transformed from MNIST to CIFAR
 
 class SimpleCNN(nn.Module):
     def __init__(self, hidden_size=512):
@@ -135,11 +134,9 @@ def dense_neural_network_CIFAR(df_accuracies):
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 
-
-def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True):
-    #xxx - not done at all
+def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True, strategy_1=True):
     df_accuracies = []
-    df_accuracies, model, _, theta0, train_loader, test_loader = dense_neural_network_CIFAR(df_accuracies)
+    df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_CIFAR(df_accuracies)
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
@@ -154,27 +151,30 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
         current_prune_percent += remaining_weights_percent * prune_percent
         remaining_weights_percent = 1 - current_prune_percent
         print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
-        # Pruning
+        
         mask = prune_by_magnitude(model, current_prune_percent*100)
-        if LTH : #Then we keep the initial weights
-            # Reset to initial weights
-            model = create_winning_ticket(model, mask, theta0)
-        else: #If we are not doing LTH, then the initial weights are random !! 
+        if LTH : 
+            if strategy_1 or (pruning_round + 1 == rounds): #Then we keep the initial weights
+                model = create_winning_ticket(model, mask, theta0)
+            else : #Then we keep the same weights as previously trained, but with the mask, except at the last round
+                model = create_winning_ticket(model, mask, thetaj)
+        else: #If we are not doing LTH, then the initial weights are random 
             model = randomly_reinitialize(model, mask)
 
-        # Making sure enough the right amount are getting pruned 
         actual_prune_percent = calculate_actual_prune_percent(model)
-        print(f"Actual pruning percentage: {actual_prune_percent:.2f}%")
-
-        # Evaluate (no retraining)
+        print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
+        
+        model.eval()
         acc = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+        #print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
 
-        # Train the pruned model
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        model.train()
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        thetaj = get_weights(model)
 
         #Test Accuracies
+        model.eval()
         acc_post_training = evaluate_the_model(model, test_loader)
         print(f"Accuracy after retraining: {acc_post_training:.2f}%")
         df_accuracies.append({"Round": f"Round {pruning_round + 1}", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
@@ -182,9 +182,7 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
     return df_accuracies, model
 
 
-
-
-
+#iterative_pruning_CIFAR()
 
 
 
