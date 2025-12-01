@@ -12,19 +12,21 @@ xxx - Goal
     
 ########################### Helper functions #################################################################
 
-def training_the_model(model, train_loader, optimizer, criterion, num_epochs = 10):
+def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10):
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
         for images, labels in train_loader:
             optimizer.zero_grad()
-            flattened_images = images.view(images.shape[0], -1)
-            outputs = model(flattened_images)
+            
+            # MODIFICATION : On n'aplatit plus ici ! On envoie l'image telle quelle.
+            # flattened_images = images.view(images.shape[0], -1)  <-- Ligne supprimée
+            
+            outputs = model(images) # On passe 'images' directement
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-        #print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}')
 
 def evaluate_the_model(model, test_loader):
     model.eval()
@@ -32,13 +34,14 @@ def evaluate_the_model(model, test_loader):
     total = 0
     with torch.no_grad():
         for images, labels in test_loader:
-            flattened_images = images.view(images.shape[0], -1)
-            outputs = model(flattened_images)
+            # MODIFICATION : Idem, on supprime l'aplatissement forcé
+            # flattened_images = images.view(images.shape[0], -1) <-- Ligne supprimée
+            
+            outputs = model(images) # On passe 'images' directement
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
     acc = 100 * correct / total
-    #print(f"Test Accuracy: {acc:.2f}%")
     return acc
 
 def get_weights(model):
