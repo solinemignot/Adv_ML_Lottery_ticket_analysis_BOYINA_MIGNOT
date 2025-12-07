@@ -97,57 +97,36 @@ def comparing_pruning_methods(amount_of_repeats, rounds, method_1, method_2):
             df_acc_method_2[j]['Iteration'] = i + 1
         df_accuracies_method_2 = pd.concat([df_accuracies_method_2, pd.DataFrame(df_acc_method_2)])
 
-    df_avg_accuracies_method_1 = []
-    df_avg_accuracies_method_2 = []
-    for df, df_avg in [(df_accuracies_method_1, df_avg_accuracies_method_1), (df_accuracies_method_2, df_avg_accuracies_method_2)]:
-        df_round = df[df['Round'].isin([f"Round {rounds-1}", "One_shot"])]
-        round_avg_of_test_acc = df_round['Test Accuracy (with training)'].mean()
-        min_test_acc = df_round['Test Accuracy (with training)'].min()
-        max_test_acc = df_round['Test Accuracy (with training)'].max()
-        pruning_perc = df_round['Pruning percentage'].mean()
-
-        round_avg_info = {'Round' : 'End' , 
-                        'Pruning Percentage' : pruning_perc,
-                        'Avg Test Accuracy' : round_avg_of_test_acc,
-                        'Min Test Accuracy' : min_test_acc,
-                        'Max Test Accuracy' : max_test_acc}
-        df_avg.append(round_avg_info)
-
-    df_avg_accuracies_method_1 = pd.DataFrame(df_avg_accuracies_method_1)
-    df_avg_accuracies_method_2 = pd.DataFrame(df_avg_accuracies_method_2)
-
     print((time.time()- beginning)/60)
     
-    return df_avg_accuracies_method_1, df_avg_accuracies_method_2
+    return df_accuracies_method_1, df_accuracies_method_2
 
 
-
-def comparing_pruning_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_method_2, rounds, method_1_name, method_2_name):
-    df_final_method_1 = df_avg_accuracies_method_1[df_avg_accuracies_method_1['Round'] == "One_shot"]
-    df_final_method_2 = df_avg_accuracies_method_2[df_avg_accuracies_method_2['Round'] == f"Round {rounds-1}"]
-
-    # Add method names for plotting
-    df_final_method_1['Method'] = method_1_name
-    df_final_method_2['Method'] = method_2_name
+def comparing_pruning_methods_plotting(df_accuracies_method_1, df_accuracies_method_2, rounds, method_1_name, method_2_name):
+    df_final_method_1 = df_accuracies_method_1[df_accuracies_method_1['Round'] == f"Round {rounds-1}"]
+    df_final_method_2 = df_accuracies_method_2[df_accuracies_method_2['Round'] == "One_shot"]
 
     # Combine data for box plots
-    df_final_combined = pd.concat([
-        df_final_method_1[['Test Accuracy (with training)', 'Method']],
-        df_final_method_2[['Test Accuracy (with training)', 'Method']]
-    ], ignore_index=True)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    sns.boxplot(data=df_final_method_1, y='Test Accuracy (with training)', ax=axes[0])
+    axes[0].set_ylabel('Test Accuracy') 
+    axes[0].set_xlabel(method_1_name)  
 
-    plt.figure(figsize=(8, 6))
-    sns.boxplot(x='Method', y='Test Accuracy (with training)', data=df_final_combined, palette="Set2")
+    # Plot the box plot for df_final_method_2
+    sns.boxplot(data=df_final_method_2, y='Test Accuracy (with training)', ax=axes[1])
+    axes[1].set_ylabel('Test Accuracy')  
+    axes[1].set_xlabel(method_2_name)      
 
-    plt.title(f"Final Test Accuracies: {method_1_name} vs {method_2_name}")
-    plt.xlabel("Pruning Method")
-    plt.ylabel("Test Accuracy (%)")
-    plt.grid(True)
+    y_min = min(df_final_method_1['Test Accuracy (with training)'].min(), df_final_method_2['Test Accuracy (with training)'].min())
+    y_max = max(df_final_method_1['Test Accuracy (with training)'].max(), df_final_method_2['Test Accuracy (with training)'].max())
+    axes[0].set_ylim(y_min - 0.5, y_max + 0.5)
+    axes[1].set_ylim(y_min - 0.5, y_max + 0.5)
+
+    # Add a main title
+    fig.suptitle(f"Final Test Accuracies: {method_1_name} vs {method_2_name}")
     plt.tight_layout()
     plt.savefig(f"plots/comparing_pruning_methods_{method_1_name.replace(' ','')}_vs_{method_2_name.replace(' ','')}.png")
     plt.show()
-
-
 
 
 

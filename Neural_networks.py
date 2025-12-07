@@ -96,26 +96,26 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
             print(f"Accuracy after retraining: {acc_post_training:.2f}%")
             df_accuracies.append({"Round": f"Round {pruning_round + 1}", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
             
+    else : 
+        mask = prune_by_magnitude(model, total_prune_percent)
+        if LTH : 
+            model = create_winning_ticket(model, mask, theta0)
         else : 
-            mask = prune_by_magnitude(model, total_prune_percent)
-            if LTH : 
-                model = create_winning_ticket(model, mask, theta0)
-            else : 
-                model = create_winning_ticket(model, mask, thetaj)
+            model = create_winning_ticket(model, mask, thetaj)
 
-            actual_prune_percent = calculate_actual_prune_percent(model)
-            print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
+        actual_prune_percent = calculate_actual_prune_percent(model)
+        print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
 
-            acc = evaluate_the_model(model, test_loader)
+        acc = evaluate_the_model(model, test_loader)
 
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
-            thetaj = get_weights(model)
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        thetaj = get_weights(model)
 
-            #Test Accuracies
-            acc_post_training = evaluate_the_model(model, test_loader)
-            print(f"Accuracy after retraining: {acc_post_training:.2f}%")
-            df_accuracies.append({"Round": "One_shot", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
+        #Test Accuracies
+        acc_post_training = evaluate_the_model(model, test_loader)
+        print(f"Accuracy after retraining: {acc_post_training:.2f}%")
+        df_accuracies.append({"Round": "One_shot", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
             
     return df_accuracies, model
 
