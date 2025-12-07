@@ -18,11 +18,7 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10)
         running_loss = 0.0
         for images, labels in train_loader:
             optimizer.zero_grad()
-            
-            # MODIFICATION : On n'aplatit plus ici ! On envoie l'image telle quelle.
-            # flattened_images = images.view(images.shape[0], -1)  <-- Ligne supprimée
-            
-            outputs = model(images) # On passe 'images' directement
+            outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -34,10 +30,7 @@ def evaluate_the_model(model, test_loader):
     total = 0
     with torch.no_grad():
         for images, labels in test_loader:
-            # MODIFICATION : Idem, on supprime l'aplatissement forcé
-            # flattened_images = images.view(images.shape[0], -1) <-- Ligne supprimée
-            
-            outputs = model(images) # On passe 'images' directement
+            outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()

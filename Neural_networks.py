@@ -25,7 +25,6 @@ class SimpleNN(nn.Module):
         self.fc2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        # AJOUT : C'est le modèle qui aplatit l'image maintenant
         x = x.view(x.size(0), -1) 
         x = torch.relu(self.fc1(x))
         x = self.fc2(x)
@@ -44,57 +43,80 @@ def dense_neural_network_MNIST(df_accuracies):
     train_loader, test_loader = load_mnist(batch_size)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     training_the_model(model, train_loader, optimizer, criterion)
     dense_acc = evaluate_the_model(model, test_loader)
     print(f"Initial accuracy : {round(dense_acc, 2)}%.")
-    df_accuracies.append({"Round": "Initial model", "Test Accuracy (with training)": dense_acc})
+    df_accuracies.append({"Round": "Initial model", "Pruning percentage": 0, "Test Accuracy (with training)": dense_acc})
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 # Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True, strategy_1 = True):
+def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.001, LTH = True, strategy_1 = True, one_shot = False):
     df_accuracies = []
     df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_MNIST(df_accuracies)
     print("\nStep 4: Creating the Winning ticket")
     print(f"Number of zeros before pruning: {count_zeros(model)}")
 
     criterion = nn.CrossEntropyLoss()
-    prune_percent = 1 - (1 - total_prune_percent/100)**(1/rounds)
-    remaining_weights_percent = 1
-    current_prune_percent = 0
-    print(f"At each round, we are pruning : {round(prune_percent,2)}% of the weights.")
 
-    for pruning_round in range(rounds):
-        print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
-        current_prune_percent += remaining_weights_percent * prune_percent
-        remaining_weights_percent = 1 - current_prune_percent
-        print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
-        
-        mask = prune_by_magnitude(model, current_prune_percent*100)
-        if LTH : 
-            if strategy_1 or (pruning_round + 1 == rounds): #Then we keep the initial weights
+    if not one_shot : 
+        prune_percent = 1 - (1 - total_prune_percent/100)**(1/rounds)
+        remaining_weights_percent = 1
+        current_prune_percent = 0
+        print(f"At each round, we are pruning : {round(prune_percent,2)}% of the weights.")
+
+        for pruning_round in range(rounds):
+            print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
+            current_prune_percent += remaining_weights_percent * prune_percent
+            remaining_weights_percent = 1 - current_prune_percent
+            print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
+            
+            mask = prune_by_magnitude(model, current_prune_percent*100)
+            if LTH : 
+                if strategy_1 or (pruning_round + 1 == rounds): #Then we keep the initial weights
+                    model = create_winning_ticket(model, mask, theta0)
+                else : #Then we keep the same weights as previously trained, but with the mask, except at the last round
+                    model = create_winning_ticket(model, mask, thetaj)
+            else: #If we are not doing LTH, then the initial weights are random 
+                model = randomly_reinitialize(model, mask)
+
+            actual_prune_percent = calculate_actual_prune_percent(model)
+            print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
+
+            acc = evaluate_the_model(model, test_loader)
+            #print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+            thetaj = get_weights(model)
+
+            #Test Accuracies
+            acc_post_training = evaluate_the_model(model, test_loader)
+            print(f"Accuracy after retraining: {acc_post_training:.2f}%")
+            df_accuracies.append({"Round": f"Round {pruning_round + 1}", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
+            
+        else : 
+            mask = prune_by_magnitude(model, total_prune_percent)
+            if LTH : 
                 model = create_winning_ticket(model, mask, theta0)
-            else : #Then we keep the same weights as previously trained, but with the mask, except at the last round
+            else : 
                 model = create_winning_ticket(model, mask, thetaj)
-        else: #If we are not doing LTH, then the initial weights are random 
-            model = randomly_reinitialize(model, mask)
 
-        actual_prune_percent = calculate_actual_prune_percent(model)
-        print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
+            actual_prune_percent = calculate_actual_prune_percent(model)
+            print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
 
-        acc = evaluate_the_model(model, test_loader)
-        #print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+            acc = evaluate_the_model(model, test_loader)
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
-        thetaj = get_weights(model)
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+            thetaj = get_weights(model)
 
-        #Test Accuracies
-        acc_post_training = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after retraining: {acc_post_training:.2f}%")
-        df_accuracies.append({"Round": f"Round {pruning_round + 1}", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
-        
+            #Test Accuracies
+            acc_post_training = evaluate_the_model(model, test_loader)
+            print(f"Accuracy after retraining: {acc_post_training:.2f}%")
+            df_accuracies.append({"Round": "One_shot", "Pruning percentage": actual_prune_percent, "Test Accuracy (no retraining)": acc, "Test Accuracy (with training)": acc_post_training})
+            
     return df_accuracies, model
 
 
