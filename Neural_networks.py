@@ -30,6 +30,23 @@ class SimpleNN(nn.Module):
         x = self.fc2(x)
         return x
 
+#Architecture used in the orginal Lottery Ticket Hypothesis paper
+class LeNet300_100(nn.Module):
+    def __init__(self, input_size=784, output_size=10):
+        super().__init__()
+        # Architecture exacte du papier : 300, 100, 10 
+        self.fc1 = nn.Linear(input_size, 300)
+        self.fc2 = nn.Linear(300, 100)
+        self.fc3 = nn.Linear(100, output_size)
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1) 
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+    
+    
 # Step 1 and 2: train the randomly initialized neural network 
 def dense_neural_network_MNIST(df_accuracies):
     print("\nStep 1 and 2: training the randomly initialized neural network for MNIST.")
