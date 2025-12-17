@@ -1,132 +1,150 @@
 import pandas as pd
 import time
-from Neural_networks import *
+import torch 
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 import seaborn as sns
+from tqdm import tqdm
+from Neural_networks import *
 
-############## Helper functions for comparison of initialization #######################################################################
+############## Helper functions for comparison of initialization #################################
 
 def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, method_1, method_2):
-    beginning = time.time() #XXx remove
+    beginning = time.time()
     df_accuracies_method_1 = pd.DataFrame()
     df_accuracies_method_2 = pd.DataFrame()
     
-    for i in tqdm(range(amount_of_repeats)):
-        print(f"\nIteration for average : {i + 1}/{amount_of_repeats}")
-        #All the iterations for the first method
-        df_acc_method_1,_ = method_1()
-        for j in range (len(df_acc_method_1)):
+    for i in tqdm(range(amount_of_repeats), desc="Repeats"):
+        # --- METHODE 1 ---
+        df_acc_method_1, model_temp = method_1()
+        
+        # Gestion Mémoire (Safe CPU/GPU)
+        del model_temp
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache() 
+        
+        for j in range(len(df_acc_method_1)):
             df_acc_method_1[j]['Iteration'] = i + 1
         df_accuracies_method_1 = pd.concat([df_accuracies_method_1, pd.DataFrame(df_acc_method_1)])
 
-        #All the iterations for the LTH method
-        df_acc_method_2,_ = method_2()
-        for j in range (len(df_acc_method_2)):
+        # --- METHODE 2 ---
+        df_acc_method_2, model_temp = method_2()
+        
+        # Gestion Mémoire
+        del model_temp
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        for j in range(len(df_acc_method_2)):
             df_acc_method_2[j]['Iteration'] = i + 1
         df_accuracies_method_2 = pd.concat([df_accuracies_method_2, pd.DataFrame(df_acc_method_2)])
 
+    # --- CALCUL DES MOYENNES ---
     df_avg_accuracies_method_1 = []
     df_avg_accuracies_method_2 = []
-    for pruning_round in range (rounds): 
+    
+    for pruning_round in range(rounds + 1):
         for df, df_avg in [(df_accuracies_method_1, df_avg_accuracies_method_1), (df_accuracies_method_2, df_avg_accuracies_method_2)]:
-            df_round = df[df['Round'] == ("Initial model" if pruning_round == 0 else f"Round {pruning_round}")]
-            round_avg_of_test_acc = df_round['Test Accuracy (with training)'].mean()
-            min_test_acc = df_round['Test Accuracy (with training)'].min()
-            max_test_acc = df_round['Test Accuracy (with training)'].max()
-            pruning_perc = df_round['Pruning percentage'].mean()
-
-            round_avg_info = {'Round' : 'Round '+str(pruning_round), 
-                            'Pruning Percentage' : pruning_perc,
-                            'Avg Test Accuracy' : round_avg_of_test_acc,
-                            'Min Test Accuracy' : min_test_acc,
-                            'Max Test Accuracy' : max_test_acc}
-            df_avg.append(round_avg_info)
+            round_name = "Initial model" if pruning_round == 0 else f"Round {pruning_round}"
+            df_round = df[df['Round'] == round_name]
+            
+            if not df_round.empty:
+                round_avg_info = {
+                    'Round' : round_name, 
+                    'Pruning Percentage' : df_round['Pruning percentage'].mean(),
+                    'Avg Test Accuracy' : df_round['Test Accuracy (with training)'].mean(),
+                    'Min Test Accuracy' : df_round['Test Accuracy (with training)'].min(),
+                    'Max Test Accuracy' : df_round['Test Accuracy (with training)'].max()
+                }
+                df_avg.append(round_avg_info)
 
     df_avg_accuracies_method_1 = pd.DataFrame(df_avg_accuracies_method_1)
     df_avg_accuracies_method_2 = pd.DataFrame(df_avg_accuracies_method_2)
 
-    print((time.time()- beginning)/60)#XXx remove
+    print(f"Total time: {(time.time()- beginning)/60:.2f} minutes")
     
     return df_avg_accuracies_method_1, df_avg_accuracies_method_2
 
 
-
 def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_method_2, method_1_name, method_2_name):
-
+    plt.figure(figsize=(10, 6))
+    
     plt.errorbar(df_avg_accuracies_method_1['Pruning Percentage'],
                 df_avg_accuracies_method_1['Avg Test Accuracy'],
                 yerr=[df_avg_accuracies_method_1['Avg Test Accuracy'] - df_avg_accuracies_method_1['Min Test Accuracy'],
                         df_avg_accuracies_method_1['Max Test Accuracy'] - df_avg_accuracies_method_1['Avg Test Accuracy']],
-                label = method_1_name)
+                label = method_1_name, capsize=5, marker='o')
+                
     plt.errorbar(df_avg_accuracies_method_2['Pruning Percentage'],
                 df_avg_accuracies_method_2['Avg Test Accuracy'],
                 yerr=[df_avg_accuracies_method_2['Avg Test Accuracy'] - df_avg_accuracies_method_2['Min Test Accuracy'],
                         df_avg_accuracies_method_2['Max Test Accuracy'] - df_avg_accuracies_method_2['Avg Test Accuracy']],
-                label = method_2_name)
+                label = method_2_name, capsize=5, marker='x')
     
-    plt.xlabel("Pruning Percentage")
-    plt.ylabel("Test Accuracy")
-    plt.title(f"Comparing the initialization methods : {method_1_name} vs {method_2_name}") #xxx Change title 
+    plt.gca().invert_xaxis()
+    plt.xlabel("Pruning Percentage (Sparsity)")
+    plt.ylabel("Test Accuracy (%)")
+    plt.title(f"Comparison: {method_1_name} vs {method_2_name}")
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
-    plt.savefig(f"plots/comparing_initialization_post_pruning_{method_1_name.replace(' ','')}_vs_{method_2_name.replace(' ','')}.png") #xxx Change file title 
+    plt.show()
 
 
-
-
-############## Helper functions for comparison of pruning #######################################################################
+############## Helper functions for comparison of pruning (Iterative vs One Shot) #################################
 
 def comparing_pruning_methods(amount_of_repeats, rounds, method_1, method_2):
-    beginning = time.time() #XXx remove
+    beginning = time.time()
     df_accuracies_method_1 = pd.DataFrame()
     df_accuracies_method_2 = pd.DataFrame()
     
-    for i in tqdm(range(amount_of_repeats)):
-        print(f"\nIteration for average : {i + 1}/{amount_of_repeats}")
-        #All the iterations for the first method
-        df_acc_method_1,_ = method_1()
-        for j in range (len(df_acc_method_1)):
+    for i in tqdm(range(amount_of_repeats), desc="Repeats"):
+        # Method 1
+        df_acc_method_1, model_temp = method_1()
+        del model_temp
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
+        
+        for j in range(len(df_acc_method_1)):
             df_acc_method_1[j]['Iteration'] = i + 1
         df_accuracies_method_1 = pd.concat([df_accuracies_method_1, pd.DataFrame(df_acc_method_1)])
 
-        #All the iterations for the LTH method
-        df_acc_method_2,_ = method_2()
-        for j in range (len(df_acc_method_2)):
+        # Method 2
+        df_acc_method_2, model_temp = method_2()
+        del model_temp
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
+        
+        for j in range(len(df_acc_method_2)):
             df_acc_method_2[j]['Iteration'] = i + 1
         df_accuracies_method_2 = pd.concat([df_accuracies_method_2, pd.DataFrame(df_acc_method_2)])
 
-    print((time.time()- beginning)/60)
+    print(f"Total time: {(time.time()- beginning)/60:.2f} minutes")
     
     return df_accuracies_method_1, df_accuracies_method_2
 
 
 def comparing_pruning_methods_plotting(df_accuracies_method_1, df_accuracies_method_2, rounds, method_1_name, method_2_name):
-    df_final_method_1 = df_accuracies_method_1[df_accuracies_method_1['Round'] == f"Round {rounds-1}"]
+    df_final_method_1 = df_accuracies_method_1[df_accuracies_method_1['Round'] == f"Round {rounds}"]
     df_final_method_2 = df_accuracies_method_2[df_accuracies_method_2['Round'] == "One_shot"]
+    
+    if df_final_method_1.empty:
+         df_final_method_1 = df_accuracies_method_1[df_accuracies_method_1['Round'] == "One_shot"]
 
-    # Combine data for box plots
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    
     sns.boxplot(data=df_final_method_1, y='Test Accuracy (with training)', ax=axes[0])
     axes[0].set_ylabel('Test Accuracy') 
     axes[0].set_xlabel(method_1_name)  
 
-    # Plot the box plot for df_final_method_2
     sns.boxplot(data=df_final_method_2, y='Test Accuracy (with training)', ax=axes[1])
     axes[1].set_ylabel('Test Accuracy')  
     axes[1].set_xlabel(method_2_name)      
 
-    y_min = min(df_final_method_1['Test Accuracy (with training)'].min(), df_final_method_2['Test Accuracy (with training)'].min())
-    y_max = max(df_final_method_1['Test Accuracy (with training)'].max(), df_final_method_2['Test Accuracy (with training)'].max())
-    axes[0].set_ylim(y_min - 0.5, y_max + 0.5)
-    axes[1].set_ylim(y_min - 0.5, y_max + 0.5)
+    y_vals = pd.concat([df_final_method_1['Test Accuracy (with training)'], df_final_method_2['Test Accuracy (with training)']])
+    if not y_vals.empty:
+        y_min, y_max = y_vals.min(), y_vals.max()
+        margin = (y_max - y_min) * 0.1 if y_max != y_min else 1.0
+        axes[0].set_ylim(y_min - margin, y_max + margin)
+        axes[1].set_ylim(y_min - margin, y_max + margin)
 
-    # Add a main title
     fig.suptitle(f"Final Test Accuracies: {method_1_name} vs {method_2_name}")
     plt.tight_layout()
-    plt.savefig(f"plots/comparing_pruning_methods_{method_1_name.replace(' ','')}_vs_{method_2_name.replace(' ','')}.png")
     plt.show()
-
-
-
