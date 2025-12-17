@@ -80,7 +80,7 @@ def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_met
                         df_avg_accuracies_method_2['Max Test Accuracy'] - df_avg_accuracies_method_2['Avg Test Accuracy']],
                 label = method_2_name, capsize=5, marker='x')
     
-    plt.gca().invert_xaxis()
+    #plt.gca().invert_xaxis()
     plt.xlabel("Pruning Percentage (Sparsity)")
     plt.ylabel("Test Accuracy (%)")
     plt.title(f"Comparison: {method_1_name} vs {method_2_name}")
