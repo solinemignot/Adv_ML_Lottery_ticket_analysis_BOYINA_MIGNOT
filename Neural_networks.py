@@ -90,23 +90,28 @@ class SimpleCNN(nn.Module):
 
 ########################### LOGIQUE D'ENTRAINEMENT (MNIST) #################################
 
-# Step 1 and 2: train the randomly initialized neural network 
-def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=1.2e-3):
+def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=0.1, optimizer_type="sgd"):
     print("\nStep 1 and 2: training the randomly initialized neural network for MNIST.")
     
-    # --- MODIF ARCHITECTURE & GPU ---
-    # On utilise LeNet300_100 au lieu de SimpleNN
     model = LeNet300_100(input_size=784, output_size=10)
-    model.to(device) # <--- Envoi sur GPU
+    model.to(device)
     
-    # Sauvegarde Theta 0
     theta_0 = get_weights(model)
 
-    batch_size = 60 # Ajusté pour LeNet
+    batch_size = 60
     train_loader, test_loader = load_mnist(batch_size)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
+    # --- CHOIX DE L'OPTIMISEUR ---
+    if optimizer_type.lower() == "sgd":
+        # SGD avec momentum est standard pour LTH
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+        print("   -> Optimizer used: SGD (momentum=0.9)")
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        print("   -> Optimizer used: Adam")
+    # -----------------------------
 
     training_the_model(model, train_loader, optimizer, criterion, num_epochs=epochs)
     
@@ -121,22 +126,20 @@ def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=1.2e-3):
     
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
-# Step 4: creating the winning ticket f(x; m⊙theta_0)
-def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=1.2e-3, LTH=True, strategy_1=True, one_shot=False):
+
+def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.1, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
     df_accuracies = []
     
-    # Appel de la fonction dense (adaptée pour accepter epochs et lr)
+    # On passe l'optimizer_type à la fonction dense
     df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_MNIST(
-        df_accuracies, epochs=epochs_per_round, lr=lr
+        df_accuracies, epochs=epochs_per_round, lr=lr, optimizer_type=optimizer_type
     )
     
     print("\nStep 4: Creating the Winning ticket")
-    # print(f"Number of zeros before pruning: {count_zeros(model)}")
-
+    
     criterion = nn.CrossEntropyLoss()
 
     if not one_shot:
-        # Formule IMP : p = 1 - (1 - P_total)^(1/n)
         prune_percent = 1 - (1 - total_prune_percent/100)**(1/rounds)
         remaining_weights_percent = 1
         current_prune_percent = 0
@@ -145,36 +148,37 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
         for pruning_round in range(rounds):
             print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
             
-            # Calcul cumulatif comme dans ton code original
             current_prune_percent += remaining_weights_percent * prune_percent
             remaining_weights_percent = 1 - current_prune_percent
             
             print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
             
-            # Pruning (On passe le pourcentage total cumulé)
             mask = prune_by_magnitude(model, current_prune_percent*100)
             
-            # Reset Logique (Strategy 1 vs 2)
             if LTH: 
-                if strategy_1 or (pruning_round + 1 == rounds): # Reset à Theta 0
+                if strategy_1 or (pruning_round + 1 == rounds):
                     model = create_winning_ticket(model, mask, theta0)
-                else: # Fine tuning (Keep weights)
+                else:
                     model = create_winning_ticket(model, mask, thetaj)
-            else: # Random Reinit
+            else:
                 model = randomly_reinitialize(model, mask)
 
             actual_prune_percent = calculate_actual_prune_percent(model)
-            print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
+            print(f"Actual Global Sparsity: {actual_prune_percent:.2f}%")
 
             acc = evaluate_the_model(model, test_loader)
-            # print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
+            
+            # --- CHOIX DE L'OPTIMISEUR (RESET) ---
+            if optimizer_type.lower() == "sgd":
+                optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            # -------------------------------------
 
-            # Retrain
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+            # IMPORTANT: On passe le masque ici pour bloquer les gradients des poids à 0
+            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
             thetaj = get_weights(model)
 
-            # Test Accuracies
             acc_post_training = evaluate_the_model(model, test_loader)
             print(f"Accuracy after retraining: {acc_post_training:.2f}%")
             
@@ -190,7 +194,6 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
         if LTH: 
             model = create_winning_ticket(model, mask, theta0)
         else: 
-            # Note: Si One shot et LTH=False, on fait du random
             model = randomly_reinitialize(model, mask)
 
         actual_prune_percent = calculate_actual_prune_percent(model)
@@ -198,8 +201,14 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
         acc = evaluate_the_model(model, test_loader)
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        # --- CHOIX DE L'OPTIMISEUR (RESET) ---
+        if optimizer_type.lower() == "sgd":
+            optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+        else:
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        # -------------------------------------
+
+        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
         thetaj = get_weights(model)
 
         acc_post_training = evaluate_the_model(model, test_loader)
@@ -217,13 +226,14 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
 ########################### LOGIQUE D'ENTRAINEMENT (CIFAR-10) #################################
 
-def dense_neural_network_CIFAR(df_accuracies, epochs=10, lr=2e-4):
+def dense_neural_network_CIFAR(df_accuracies, epochs=10, 
+                                lr=0.1, #2e-4 
+                                optimizer_type= "sgd" #"adam"
+                                ):
     print("\nStep 1 and 2: training the randomly initialized neural network for CIFAR.")
     
-    # --- MODIF ARCHITECTURE & GPU ---
-    # On utilise Conv2 au lieu de SimpleCNN pour CIFAR
     model = Conv2(output_size=10)
-    model.to(device) # <--- Envoi sur GPU
+    model.to(device)
     
     theta_0 = get_weights(model)
 
@@ -231,7 +241,15 @@ def dense_neural_network_CIFAR(df_accuracies, epochs=10, lr=2e-4):
     train_loader, test_loader = load_cifar(batch_size)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    
+    # --- CHOIX DE L'OPTIMISEUR ---
+    if optimizer_type.lower() == "sgd":
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+        print("   -> Optimizer used: SGD (momentum=0.9)")
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        print("   -> Optimizer used: Adam")
+    # -----------------------------
 
     training_the_model(model, train_loader, optimizer, criterion, num_epochs=epochs)
     
@@ -246,15 +264,14 @@ def dense_neural_network_CIFAR(df_accuracies, epochs=10, lr=2e-4):
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 
-def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=2e-4, LTH=True, strategy_1=True, one_shot=False):
+def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.1, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
     df_accuracies = []
     
     df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_CIFAR(
-        df_accuracies, epochs=epochs_per_round, lr=lr
+        df_accuracies, epochs=epochs_per_round, lr=lr, optimizer_type=optimizer_type
     )
     
     print("\nStep 4: Creating the Winning ticket")
-    # print(f"Number of zeros before pruning: {count_zeros(model)}")
     
     criterion = nn.CrossEntropyLoss()
 
@@ -269,6 +286,7 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
             
             current_prune_percent += remaining_weights_percent * prune_percent
             remaining_weights_percent = 1 - current_prune_percent
+            
             print(f"Current pruning percentage (Method 1): {current_prune_percent*100:.2f}%")
             
             mask = prune_by_magnitude(model, current_prune_percent*100)
@@ -278,17 +296,22 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
                     model = create_winning_ticket(model, mask, theta0)
                 else:
                     model = create_winning_ticket(model, mask, thetaj)
-            else: 
+            else:
                 model = randomly_reinitialize(model, mask)
 
             actual_prune_percent = calculate_actual_prune_percent(model)
             print(f"Current pruning percentage: {actual_prune_percent:.2f}%")
             
             acc = evaluate_the_model(model, test_loader)
-            #print(f"Accuracy after pruning (no retraining): {acc:.2f}%")
 
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+            # --- CHOIX DE L'OPTIMISEUR ---
+            if optimizer_type.lower() == "sgd":
+                optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            # -----------------------------
+
+            training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
             thetaj = get_weights(model)
 
             acc_post_training = evaluate_the_model(model, test_loader)
@@ -313,8 +336,14 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
 
         acc = evaluate_the_model(model, test_loader)
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round)
+        # --- CHOIX DE L'OPTIMISEUR ---
+        if optimizer_type.lower() == "sgd":
+            optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+        else:
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        # -----------------------------
+
+        training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
         thetaj = get_weights(model)
 
         acc_post_training = evaluate_the_model(model, test_loader)

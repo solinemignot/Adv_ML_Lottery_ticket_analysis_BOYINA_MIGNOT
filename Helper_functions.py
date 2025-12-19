@@ -7,13 +7,16 @@ import torch.nn.functional as F
 from Accessing_data import load_mnist, load_cifar
 
 # --- 1. DÉTECTION GLOBALE DU GPU ---
-# C'est la ligne la plus importante : elle décide où les calculs se font.
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Helper functions loaded. User device: {device}")
 
 ########################### Helper functions #################################
 
-def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10):
+def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10, mask=None):
+    """
+    CORRECTION : Ajout de l'argument 'mask=None' pour fixer l'erreur TypeError.
+    Application stricte du masque sur les gradients.
+    """
     # On s'assure que le modèle est sur le bon device
     model.to(device)
     
@@ -29,14 +32,15 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10)
             loss = criterion(outputs, labels)
             loss.backward()
             
-            # --- MASQUAGE DES GRADIENTS ---
-            # Si le modèle a un masque (après le 1er round), on force le gradient des 
-            # poids prunés à 0 pour qu'ils ne "ressuscitent" pas pendant la descente de gradient.
-            if hasattr(model, 'mask') and model.mask is not None:
+            # --- MASQUAGE DES GRADIENTS (CORRIGÉ) ---
+            # On utilise l'argument 'mask' passé à la fonction.
+            # On force le gradient à 0 pour que les poids prunés ne changent pas.
+            if mask is not None:
                 with torch.no_grad():
                     for name, param in model.named_parameters():
-                        if name in model.mask:
-                            param.grad *= model.mask[name]
+                        if name in mask:
+                            # On s'assure que le masque est sur le GPU
+                            param.grad *= mask[name].to(device)
             
             optimizer.step()
             running_loss += loss.item()
@@ -60,15 +64,14 @@ def evaluate_the_model(model, test_loader):
 
 def get_weights(model):
     # OPTIMISATION MEMOIRE : On stocke les sauvegardes (Theta0, Thetaj) sur le CPU.
-    # Sinon, on va saturer la mémoire du GPU très vite.
-    return {name: param.clone().cpu() for name, param in model.named_parameters()}
+    return {name: param.clone().detach().cpu() for name, param in model.named_parameters()}
 
 def apply_mask(model, mask):
     # Utile pour forcer l'application du masque hors entraînement
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name in mask:
-                param.data *= mask[name]
+                param.data *= mask[name].to(device)
 
 def calculate_actual_prune_percent(model):
     total_weights = sum(p.numel() for p in model.parameters() if p.dim() > 1)
@@ -84,10 +87,7 @@ def count_zeros(model):
 
 def prune_by_magnitude(model, prune_percent=20):
     """
-    Layer-wise pruning qui respecte la règle du papier :
-    - On calcule un seuil par couche.
-    - La dernière couche (output) est élaguée moitié moins fort.
-    - Tout est géré sur GPU.
+    Layer-wise pruning qui respecte la règle du papier.
     """
     mask = {}
     
@@ -98,33 +98,31 @@ def prune_by_magnitude(model, prune_percent=20):
             last_weight_layer_name = name
             
     # 2. Pruning
-    print(f"   [Pruning Debug] Target Global Percent: {prune_percent:.2f}%")
+    # print(f"   [Pruning Debug] Target Global Percent: {prune_percent:.2f}%")
     
     for name, param in model.named_parameters():
         if param.dim() > 1:
             current_prune_percent = prune_percent
             
-            # Gestion couche de sortie
+            # Gestion couche de sortie (souvent élaguée moins agressivement ou pas du tout)
             if name == last_weight_layer_name:
                 current_prune_percent = prune_percent / 2
-                print(f"   -> Output Layer detected ({name}): Pruning half ({current_prune_percent:.2f}%)")
+                # print(f"   -> Output Layer detected ({name}): Pruning half ({current_prune_percent:.2f}%)")
             
+            # Calcul du nombre de poids à couper
             k = int(param.numel() * current_prune_percent / 100)
             
             if k > 0:
+                # On utilise abs() pour la magnitude
                 threshold = torch.topk(param.data.abs().view(-1), k, largest=False).values.max()
+                # 1 si > seuil, 0 sinon
                 mask[name] = (param.data.abs() > threshold).float().to(device)
-                
-                # --- NOUVEAU : PRINT COMME TU VEUX ---
-                zeros = (mask[name] == 0).sum().item()
-                total = mask[name].numel()
-                print(f"      Layer {name:<10} | Threshold: {threshold:.5f} | Zeros: {zeros}/{total} ({100*zeros/total:.1f}%)")
                 
             else:
                 mask[name] = torch.ones_like(param).to(device)
-                print(f"      Layer {name:<10} | Keep All (k=0)")
                 
         else:
+            # On garde les biais et autres paramètres 1D
             mask[name] = torch.ones_like(param).to(device)
             
     return mask
@@ -132,34 +130,35 @@ def prune_by_magnitude(model, prune_percent=20):
 def create_winning_ticket(model, mask, theta):
     """
     Réinitialise les poids à leur valeur d'origine (Theta 0) tout en appliquant le masque.
-    Gère le transfert CPU (theta stocké) -> GPU (modèle actif).
     """
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name in mask:
                 # theta[name] est sur CPU, param est sur GPU. On envoie theta sur GPU.
                 original_weights = theta[name].to(device)
-                param.data = original_weights * mask[name]
+                param.data = original_weights * mask[name].to(device)
+            elif name in theta:
+                 # Pour les params sans masque (ex: biais), on reset aussi à l'initial
+                 param.data = theta[name].to(device)
     
-    # Petit check de debug
-    # zero_count = (param == 0).sum().item()
-    # print(f"Ticket Reset -> Layer {name}: {zero_count} zeros")
     return model
 
 def randomly_reinitialize(model, mask):
     """
     Réinitialise aléatoirement le réseau (Random Ticket) mais garde la structure du masque.
-    Utilise l'initialisation standard de PyTorch (Kaiming/Xavier) puis remet les zéros.
     """
     # 1. On réinitialise tout le module proprement
-    for name, module in model.named_modules():
-        if isinstance(module, nn.Linear) or isinstance(module, nn.Conv2d):
-            module.reset_parameters()
+    def init_weights(m):
+        if isinstance(m, (nn.Linear, nn.Conv2d)):
+            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+    
+    model.apply(init_weights)
             
     # 2. On réapplique les zéros du masque
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name in mask:
-                 param.data *= mask[name]
+                 param.data *= mask[name].to(device)
     return model
-
