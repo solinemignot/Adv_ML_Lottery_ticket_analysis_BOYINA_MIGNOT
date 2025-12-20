@@ -13,13 +13,12 @@ In the original article, the steps to identify a winning ticket are :
 
 """
 
-# --- 1. DÉTECTION GPU ---
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Neural Networks loaded. User device: {device}")
 
 ########################### ARCHITECTURES #################################
 
-# 1. LeNet-300-100 (Architecture officielle pour MNIST)
 class LeNet300_100(nn.Module):
     def __init__(self, input_size=784, output_size=10):
         super(LeNet300_100, self).__init__()
@@ -34,14 +33,12 @@ class LeNet300_100(nn.Module):
         x = self.fc3(x)
         return x
 
-# 2. Conv-2 (Architecture officielle pour CIFAR-10 / VGG-style)
 class Conv2(nn.Module):
     def __init__(self, output_size=10):
         super(Conv2, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(2, 2)
-        # Après 2 convs et 1 pool sur 32x32 -> 16x16
         self.fc1 = nn.Linear(64 * 16 * 16, 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, output_size)
@@ -55,20 +52,18 @@ class Conv2(nn.Module):
         x = self.fc3(x)
         return x
 
-# 3. SimpleNN (Ton ancien modèle, gardé pour compatibilité)
+# Je garde tes anciennes classes au cas où
 class SimpleNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(SimpleNN, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
-
     def forward(self, x):
         x = x.view(x.size(0), -1) 
         x = torch.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
-# 4. SimpleCNN (Ton ancien modèle CIFAR, gardé pour compatibilité)
 class SimpleCNN(nn.Module):
     def __init__(self, hidden_size=512):
         super(SimpleCNN, self).__init__()
@@ -78,7 +73,6 @@ class SimpleCNN(nn.Module):
         self.fc1 = nn.Linear(64 * 8 * 8, hidden_size) 
         self.fc2 = nn.Linear(hidden_size, 10)
         self.dropout = nn.Dropout(0.25)
-
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
@@ -88,9 +82,9 @@ class SimpleCNN(nn.Module):
         x = self.fc2(x)
         return x
 
-########################### LOGIQUE D'ENTRAINEMENT (MNIST) #################################
+########################### LOGIQUE MNIST #################################
 
-def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=0.1, optimizer_type="sgd"):
+def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=0.01, optimizer_type="sgd"):
     print("\nStep 1 and 2: training the randomly initialized neural network for MNIST.")
     
     model = LeNet300_100(input_size=784, output_size=10)
@@ -103,16 +97,13 @@ def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=0.1, optimizer_type=
 
     criterion = nn.CrossEntropyLoss()
     
-    # --- CHOIX DE L'OPTIMISEUR ---
+    # Selection de l'optimiseur
     if optimizer_type.lower() == "sgd":
-        # SGD avec momentum est standard pour LTH
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
-        print("   -> Optimizer used: SGD (momentum=0.9)")
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        print("   -> Optimizer used: Adam")
-    # -----------------------------
 
+    # Entraînement initial (sans masque)
     training_the_model(model, train_loader, optimizer, criterion, num_epochs=epochs)
     
     dense_acc = evaluate_the_model(model, test_loader)
@@ -127,16 +118,15 @@ def dense_neural_network_MNIST(df_accuracies, epochs=10, lr=0.1, optimizer_type=
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 
-def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.1, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
+def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.01, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
     df_accuracies = []
     
-    # On passe l'optimizer_type à la fonction dense
+    # Appel correct avec tous les arguments
     df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_MNIST(
         df_accuracies, epochs=epochs_per_round, lr=lr, optimizer_type=optimizer_type
     )
     
     print("\nStep 4: Creating the Winning ticket")
-    
     criterion = nn.CrossEntropyLoss()
 
     if not one_shot:
@@ -155,6 +145,7 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
             
             mask = prune_by_magnitude(model, current_prune_percent*100)
             
+            # Reset des poids selon la stratégie
             if LTH: 
                 if strategy_1 or (pruning_round + 1 == rounds):
                     model = create_winning_ticket(model, mask, theta0)
@@ -168,17 +159,16 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
             acc = evaluate_the_model(model, test_loader)
             
-            # --- CHOIX DE L'OPTIMISEUR (RESET) ---
+            # Reset de l'optimiseur
             if optimizer_type.lower() == "sgd":
                 optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            # -------------------------------------
 
-            # IMPORTANT: On passe le masque ici pour bloquer les gradients des poids à 0
+            # --- CORRECTION : PASSAGE DU MASQUE ---
             training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
+            
             thetaj = get_weights(model)
-
             acc_post_training = evaluate_the_model(model, test_loader)
             print(f"Accuracy after retraining: {acc_post_training:.2f}%")
             
@@ -201,16 +191,15 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
         acc = evaluate_the_model(model, test_loader)
 
-        # --- CHOIX DE L'OPTIMISEUR (RESET) ---
         if optimizer_type.lower() == "sgd":
             optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        # -------------------------------------
 
+        # --- CORRECTION : PASSAGE DU MASQUE ---
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
+        
         thetaj = get_weights(model)
-
         acc_post_training = evaluate_the_model(model, test_loader)
         print(f"Accuracy after retraining: {acc_post_training:.2f}%")
         
@@ -224,12 +213,9 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
     return df_accuracies, model
 
 
-########################### LOGIQUE D'ENTRAINEMENT (CIFAR-10) #################################
+########################### LOGIQUE CIFAR #################################
 
-def dense_neural_network_CIFAR(df_accuracies, epochs=10, 
-                                lr=0.1, #2e-4 
-                                optimizer_type= "sgd" #"adam"
-                                ):
+def dense_neural_network_CIFAR(df_accuracies, epochs=10, lr=0.01, optimizer_type="sgd"):
     print("\nStep 1 and 2: training the randomly initialized neural network for CIFAR.")
     
     model = Conv2(output_size=10)
@@ -242,14 +228,12 @@ def dense_neural_network_CIFAR(df_accuracies, epochs=10,
 
     criterion = nn.CrossEntropyLoss()
     
-    # --- CHOIX DE L'OPTIMISEUR ---
     if optimizer_type.lower() == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
         print("   -> Optimizer used: SGD (momentum=0.9)")
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         print("   -> Optimizer used: Adam")
-    # -----------------------------
 
     training_the_model(model, train_loader, optimizer, criterion, num_epochs=epochs)
     
@@ -264,7 +248,7 @@ def dense_neural_network_CIFAR(df_accuracies, epochs=10,
     return df_accuracies, model, get_weights(model), theta_0, train_loader, test_loader
 
 
-def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.1, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
+def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.01, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
     df_accuracies = []
     
     df_accuracies, model, thetaj, theta0, train_loader, test_loader = dense_neural_network_CIFAR(
@@ -272,7 +256,6 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
     )
     
     print("\nStep 4: Creating the Winning ticket")
-    
     criterion = nn.CrossEntropyLoss()
 
     if not one_shot:
@@ -304,16 +287,15 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
             
             acc = evaluate_the_model(model, test_loader)
 
-            # --- CHOIX DE L'OPTIMISEUR ---
             if optimizer_type.lower() == "sgd":
                 optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            # -----------------------------
 
+            # --- CORRECTION : PASSAGE DU MASQUE ---
             training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
+            
             thetaj = get_weights(model)
-
             acc_post_training = evaluate_the_model(model, test_loader)
             print(f"Accuracy after retraining: {acc_post_training:.2f}%")
             
@@ -336,16 +318,15 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
 
         acc = evaluate_the_model(model, test_loader)
 
-        # --- CHOIX DE L'OPTIMISEUR ---
         if optimizer_type.lower() == "sgd":
             optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-        # -----------------------------
 
+        # --- CORRECTION : PASSAGE DU MASQUE ---
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
+        
         thetaj = get_weights(model)
-
         acc_post_training = evaluate_the_model(model, test_loader)
         print(f"Accuracy after retraining: {acc_post_training:.2f}%")
         
