@@ -16,11 +16,8 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
     for i in tqdm(range(amount_of_repeats), desc="Repeats"):
         # --- METHODE 1 ---
         df_acc_method_1, model_temp = method_1()
-        
-        # Gestion Mémoire (Safe CPU/GPU)
         del model_temp
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache() 
+        if torch.cuda.is_available(): torch.cuda.empty_cache() 
         
         for j in range(len(df_acc_method_1)):
             df_acc_method_1[j]['Iteration'] = i + 1
@@ -28,11 +25,8 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
 
         # --- METHODE 2 ---
         df_acc_method_2, model_temp = method_2()
-        
-        # Gestion Mémoire
         del model_temp
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if torch.cuda.is_available(): torch.cuda.empty_cache()
         
         for j in range(len(df_acc_method_2)):
             df_acc_method_2[j]['Iteration'] = i + 1
@@ -42,9 +36,13 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
     df_avg_accuracies_method_1 = []
     df_avg_accuracies_method_2 = []
     
-    for pruning_round in range(rounds + 1):
+    # Liste des rounds à chercher + "One_shot" au cas où
+    # On ajoute "One_shot" à la liste des clés à chercher
+    target_rounds = ["Initial model"] + [f"Round {r+1}" for r in range(rounds)] + ["One_shot"]
+    
+    for round_name in target_rounds:
         for df, df_avg in [(df_accuracies_method_1, df_avg_accuracies_method_1), (df_accuracies_method_2, df_avg_accuracies_method_2)]:
-            round_name = "Initial model" if pruning_round == 0 else f"Round {pruning_round}"
+            
             df_round = df[df['Round'] == round_name]
             
             if not df_round.empty:
