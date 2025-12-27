@@ -14,7 +14,7 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
     df_accuracies_method_2 = pd.DataFrame()
     
     for i in tqdm(range(amount_of_repeats), desc="Repeats"):
-        # --- METHODE 1 ---
+        #method1
         df_acc_method_1, model_temp = method_1()
         del model_temp
         if torch.cuda.is_available(): torch.cuda.empty_cache() 
@@ -23,7 +23,7 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
             df_acc_method_1[j]['Iteration'] = i + 1
         df_accuracies_method_1 = pd.concat([df_accuracies_method_1, pd.DataFrame(df_acc_method_1)])
 
-        # --- METHODE 2 ---
+        #method2
         df_acc_method_2, model_temp = method_2()
         del model_temp
         if torch.cuda.is_available(): torch.cuda.empty_cache()
@@ -32,12 +32,9 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
             df_acc_method_2[j]['Iteration'] = i + 1
         df_accuracies_method_2 = pd.concat([df_accuracies_method_2, pd.DataFrame(df_acc_method_2)])
 
-    # --- CALCUL DES MOYENNES ---
     df_avg_accuracies_method_1 = []
     df_avg_accuracies_method_2 = []
     
-    # Liste des rounds à chercher + "One_shot" au cas où
-    # On ajoute "One_shot" à la liste des clés à chercher
     target_rounds = ["Initial model"] + [f"Round {r+1}" for r in range(rounds)] + ["One_shot"]
     
     for round_name in target_rounds:
@@ -63,7 +60,7 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
     return df_avg_accuracies_method_1, df_avg_accuracies_method_2
 
 
-def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_method_2, method_1_name, method_2_name):
+def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_method_2, method_1_name, method_2_name, dataset_name):
     plt.figure(figsize=(10, 6))
     
     plt.errorbar(df_avg_accuracies_method_1['Pruning Percentage'],
@@ -78,13 +75,13 @@ def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_met
                         df_avg_accuracies_method_2['Max Test Accuracy'] - df_avg_accuracies_method_2['Avg Test Accuracy']],
                 label = method_2_name, capsize=5, marker='x')
     
-    #plt.gca().invert_xaxis()
     plt.xlabel("Pruning Percentage (Sparsity)")
     plt.ylabel("Test Accuracy (%)")
     plt.title(f"Comparison: {method_1_name} vs {method_2_name}")
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
+    plt.savefig(f"plots/{dataset_name}_comparing_{method_1_name}_vs_{method_2_name}.png")
     plt.show()
 
 

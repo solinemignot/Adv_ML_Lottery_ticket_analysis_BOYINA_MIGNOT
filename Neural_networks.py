@@ -34,22 +34,31 @@ class LeNet300_100(nn.Module):
         return x
 
 class Conv2(nn.Module):
-    def __init__(self, output_size=10):
-        super(Conv2, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(64 * 16 * 16, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, output_size)
-
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(3, 64, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),             
+            # Block 2
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),             
+            # Block 3
+            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2))
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(256*4*4, 512), nn.ReLU(inplace=True), nn.Dropout(0.5),
+            nn.Linear(512, 512), nn.ReLU(inplace=True), nn.Dropout(0.5),
+            nn.Linear(512, num_classes))
+    
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = self.pool(F.relu(self.conv2(x)))
+        x = self.features(x)
         x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.classifier(x)
         return x
 
 # Je garde tes anciennes classes au cas où
@@ -159,13 +168,11 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 
             acc = evaluate_the_model(model, test_loader)
             
-            # Reset de l'optimiseur
             if optimizer_type.lower() == "sgd":
                 optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-            # --- CORRECTION : PASSAGE DU MASQUE ---
             training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
             
             thetaj = get_weights(model)
@@ -196,7 +203,6 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        # --- CORRECTION : PASSAGE DU MASQUE ---
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
         
         thetaj = get_weights(model)
@@ -218,7 +224,7 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
 def dense_neural_network_CIFAR(df_accuracies, epochs=10, lr=0.01, optimizer_type="sgd"):
     print("\nStep 1 and 2: training the randomly initialized neural network for CIFAR.")
     
-    model = Conv2(output_size=10)
+    model = Conv2(num_classes=10)
     model.to(device)
     
     theta_0 = get_weights(model)
@@ -292,7 +298,6 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-            # --- CORRECTION : PASSAGE DU MASQUE ---
             training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
             
             thetaj = get_weights(model)
@@ -323,7 +328,6 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        # --- CORRECTION : PASSAGE DU MASQUE ---
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
         
         thetaj = get_weights(model)
