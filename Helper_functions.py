@@ -6,10 +6,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from Accessing_data import load_mnist, load_cifar
 
-# --- 1. DÉTECTION GLOBALE DU GPU ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Helper functions loaded. User device: {device}")
 
+# --- 1. DÉTECTION GLOBALE DU GPU ---
 ########################### Helper functions #################################
 
 def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10, mask=None):

@@ -9,7 +9,7 @@ from Neural_networks import *
 ############## Helper functions for comparison of initialization #################################
 
 def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, method_1, method_2):
-    beginning = time.time()
+    beginning_comparison = time.time()
     df_accuracies_method_1 = pd.DataFrame()
     df_accuracies_method_2 = pd.DataFrame()
     
@@ -41,48 +41,53 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
         for df, df_avg in [(df_accuracies_method_1, df_avg_accuracies_method_1), (df_accuracies_method_2, df_avg_accuracies_method_2)]:
             
             df_round = df[df['Round'] == round_name]
-            
-            if not df_round.empty:
-                round_avg_info = {
-                    'Round' : round_name, 
-                    'Pruning Percentage' : df_round['Pruning percentage'].mean(),
-                    'Avg Test Accuracy' : df_round['Test Accuracy (with training)'].mean(),
-                    'Min Test Accuracy' : df_round['Test Accuracy (with training)'].min(),
-                    'Max Test Accuracy' : df_round['Test Accuracy (with training)'].max()
-                }
-                df_avg.append(round_avg_info)
+            round_avg_info = {'Round' : round_name, 
+                             'Pruning Percentage' : df_round['Pruning percentage'].mean()}
+            for col in ['Test Accuracy (with training)', "Time (min)"]:
+                if not df_round.empty:
+                    round_avg_info[f'Avg {col}'] = df_round[col].mean()
+                    round_avg_info[f'Min {col}'] = df_round[col].min()
+                    round_avg_info[f'Max {col}'] = df_round[col].max()
+            df_avg.append(round_avg_info)
 
     df_avg_accuracies_method_1 = pd.DataFrame(df_avg_accuracies_method_1)
     df_avg_accuracies_method_2 = pd.DataFrame(df_avg_accuracies_method_2)
 
-    print(f"Total time: {(time.time()- beginning)/60:.2f} minutes")
+    print(f"Total time: {(time.time()- beginning_comparison)/60:.2f} minutes")
     
     return df_avg_accuracies_method_1, df_avg_accuracies_method_2
 
 
-def comparing_methods_plotting(df_avg_accuracies_method_1, df_avg_accuracies_method_2, method_1_name, method_2_name, dataset_name):
+def comparing_methods_plotting(df1, df2, method_1_name, method_2_name, dataset_name, comp_col='Test Accuracy (with training)'):
     plt.figure(figsize=(10, 6))
-    
-    plt.errorbar(df_avg_accuracies_method_1['Pruning Percentage'],
-                df_avg_accuracies_method_1['Avg Test Accuracy'],
-                yerr=[df_avg_accuracies_method_1['Avg Test Accuracy'] - df_avg_accuracies_method_1['Min Test Accuracy'],
-                        df_avg_accuracies_method_1['Max Test Accuracy'] - df_avg_accuracies_method_1['Avg Test Accuracy']],
-                label = method_1_name, capsize=5, marker='o')
-                
-    plt.errorbar(df_avg_accuracies_method_2['Pruning Percentage'],
-                df_avg_accuracies_method_2['Avg Test Accuracy'],
-                yerr=[df_avg_accuracies_method_2['Avg Test Accuracy'] - df_avg_accuracies_method_2['Min Test Accuracy'],
-                        df_avg_accuracies_method_2['Max Test Accuracy'] - df_avg_accuracies_method_2['Avg Test Accuracy']],
-                label = method_2_name, capsize=5, marker='x')
-    
-    plt.xlabel("Pruning Percentage (Sparsity)")
-    plt.ylabel("Test Accuracy (%)")
+
+    x1, y1 = df1['Pruning Percentage'], df1[f'Avg {comp_col}']
+    x2, y2 = df2['Pruning Percentage'], df2[f'Avg {comp_col}']
+    yerr1 = [df1[f'Avg {comp_col}'] - df1[f'Min {comp_col}'], df1[f'Max {comp_col}'] - df1[f'Avg {comp_col}']]
+    yerr2 = [df2[f'Avg {comp_col}'] - df2[f'Min {comp_col}'], df2[f'Max {comp_col}'] - df2[f'Avg {comp_col}']]
+    xerr1 = xerr2 = None
+    xlabel = "Pruning Percentage (Sparsity)"
+
+    if "time" in comp_col.lower():
+        ylabel = 'Length of execution (minutes)'
+    else:
+        ylabel = 'Test Accuracy'
+
+    plt.errorbar(x2, y2, xerr=xerr2, yerr=yerr2,
+                 label=method_2_name, capsize=5, marker='x') #in this order to have LTH in orange to pop
+
+    plt.errorbar(x1, y1, xerr=xerr1, yerr=yerr1,
+                 label=method_1_name, capsize=5, marker='o')
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
     plt.title(f"Comparison: {method_1_name} vs {method_2_name}")
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
-    plt.savefig(f"plots/{dataset_name}_comparing_{method_1_name}_vs_{method_2_name}.png")
+    plt.savefig(f"plots/{dataset_name}_comparing_{ylabel}_{method_1_name}_vs_{method_2_name}.png")
     plt.show()
+
 
 
 ############## Helper functions for comparison of pruning (Iterative vs One Shot) #################################
