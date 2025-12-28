@@ -5,8 +5,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 from Neural_networks import *
+import re
 
 ############## Helper functions for comparison of initialization #################################
+
+def clean(s):
+    return re.sub(r"[^A-Za-z0-9_]", "_", s)
 
 def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, method_1, method_2):
     beginning_comparison = time.time()
@@ -43,7 +47,7 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
             df_round = df[df['Round'] == round_name]
             round_avg_info = {'Round' : round_name, 
                              'Pruning Percentage' : df_round['Pruning percentage'].mean()}
-            for col in ['Test Accuracy (with training)', "Time (min)"]:
+            for col in ['Test Accuracy (with training)', "Time (min)", "Final Training Loss"]:
                 if not df_round.empty:
                     round_avg_info[f'Avg {col}'] = df_round[col].mean()
                     round_avg_info[f'Min {col}'] = df_round[col].min()
@@ -70,6 +74,8 @@ def comparing_methods_plotting(df1, df2, method_1_name, method_2_name, dataset_n
 
     if "time" in comp_col.lower():
         ylabel = 'Length of execution (minutes)'
+    elif "loss" in comp_col.lower():
+        ylabel = 'Final Training Loss'
     else:
         ylabel = 'Test Accuracy'
 
@@ -85,7 +91,7 @@ def comparing_methods_plotting(df1, df2, method_1_name, method_2_name, dataset_n
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tight_layout()
-    plt.savefig(f"plots/{dataset_name}_comparing_{ylabel}_{method_1_name}_vs_{method_2_name}.png")
+    plt.savefig(f"plots95/{clean(dataset_name)}_comparing_{clean(ylabel)}_{clean(method_1_name)}_vs_{clean(method_2_name)}.png")
     plt.show()
 
 

@@ -19,8 +19,8 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10,
     """
     # On s'assure que le modèle est sur le bon device
     model.to(device)
-    
     for epoch in range(num_epochs):
+        epoch_loss = 0.0
         model.train()
         running_loss = 0.0
         for images, labels in train_loader:
@@ -30,6 +30,7 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10,
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
+            epoch_loss += loss.item()
             loss.backward()
             
             # --- MASQUAGE DES GRADIENTS (CORRIGÉ) ---
@@ -44,6 +45,10 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10,
             
             optimizer.step()
             running_loss += loss.item()
+        epoch_loss /= len(train_loader)
+        return epoch_loss
+        
+    
 
 def evaluate_the_model(model, test_loader):
     model.to(device)

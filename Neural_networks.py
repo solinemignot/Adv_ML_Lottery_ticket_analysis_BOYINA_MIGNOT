@@ -115,7 +115,7 @@ def dense_neural_network_MNIST(df_accuracies, beginning, epochs=10, lr=0.01, opt
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     # Entraînement initial (sans masque)
-    training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, num_epochs=epochs)
+    final_loss = training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, num_epochs=epochs)
     
     dense_acc = evaluate_the_model(model, TEST_LOADER_MNIST)
     print(f"Initial accuracy : {dense_acc:.2f}%.")
@@ -124,7 +124,8 @@ def dense_neural_network_MNIST(df_accuracies, beginning, epochs=10, lr=0.01, opt
         "Round": "Initial model", 
         "Pruning percentage": 0, 
         "Test Accuracy (with training)": dense_acc,
-        "Time (min)": (time.time() - beginning) / 60
+        "Time (min)": (time.time() - beginning) / 60,
+        "Final Training Loss": final_loss
 
     })
     
@@ -176,7 +177,7 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-            training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, epochs_per_round, mask=mask)
+            final_loss = training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, epochs_per_round, mask=mask)
             
             thetaj = get_weights(model)
             acc_post_training = evaluate_the_model(model, TEST_LOADER_MNIST) 
@@ -187,7 +188,8 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
                 "Pruning percentage": actual_prune_percent, 
                 "Test Accuracy (no retraining)": acc, 
                 "Test Accuracy (with training)": acc_post_training,
-                "Time (min)": (time.time() - beginning) / 60
+                "Time (min)": (time.time() - beginning) / 60,
+                "Final Training Loss": final_loss
             })
             
     elif one_shot: # One Shot Logic
@@ -207,7 +209,7 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, epochs_per_round, mask=mask)
+        final_loss = training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, epochs_per_round, mask=mask)
         
         thetaj = get_weights(model)
         acc_post_training = evaluate_the_model(model, TEST_LOADER_MNIST)
@@ -218,7 +220,8 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
             "Pruning percentage": actual_prune_percent, 
             "Test Accuracy (no retraining)": acc, 
             "Test Accuracy (with training)": acc_post_training,
-            "Time (min)": (time.time() - beginning) / 60
+            "Time (min)": (time.time() - beginning) / 60,
+            "Final Training Loss": final_loss
         })
             
     return df_accuracies, model
@@ -243,7 +246,7 @@ def dense_neural_network_CIFAR(df_accuracies, beginning, epochs=10, lr=0.01, opt
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         print("   -> Optimizer used: Adam")
 
-    training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, num_epochs=epochs) 
+    final_loss = training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, num_epochs=epochs) 
     
     dense_acc = evaluate_the_model(model, TEST_LOADER_CIFAR)
     print(f"Initial accuracy : {dense_acc:.2f}%.")
@@ -252,7 +255,8 @@ def dense_neural_network_CIFAR(df_accuracies, beginning, epochs=10, lr=0.01, opt
         "Round": "Initial model", 
         "Pruning percentage": 0, 
         "Test Accuracy (with training)": dense_acc,
-        "Time (min)": (time.time() - beginning) / 60
+        "Time (min)": (time.time() - beginning) / 60,
+        "Final Training Loss": final_loss
     })
     
     return df_accuracies, model, get_weights(model), theta_0, TRAIN_LOADER_CIFAR, TEST_LOADER_CIFAR
@@ -301,7 +305,7 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-            training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, epochs_per_round, mask=mask)
+            final_loss = training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, epochs_per_round, mask=mask)
             
             thetaj = get_weights(model)
             acc_post_training = evaluate_the_model(model, TEST_LOADER_CIFAR)
@@ -312,7 +316,8 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
                 "Pruning percentage": actual_prune_percent, 
                 "Test Accuracy (no retraining)": acc, 
                 "Test Accuracy (with training)": acc_post_training,
-                "Time (min)": (time.time() - beginning) / 60
+                "Time (min)": (time.time() - beginning) / 60,
+                "Final Training Loss": final_loss
             })
             
     elif one_shot: # One Shot
@@ -332,7 +337,7 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, epochs_per_round, mask=mask)
+        final_loss = training_the_model(model, TRAIN_LOADER_CIFAR, optimizer, criterion, epochs_per_round, mask=mask)
         
         thetaj = get_weights(model)
         acc_post_training = evaluate_the_model(model, TEST_LOADER_CIFAR)
@@ -343,7 +348,8 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
             "Pruning percentage": actual_prune_percent, 
             "Test Accuracy (no retraining)": acc, 
             "Test Accuracy (with training)": acc_post_training,
-            "Time (min)": (time.time() - beginning) / 60
+            "Time (min)": (time.time() - beginning) / 60,
+            "Final Training Loss": final_loss
         })
 
     return df_accuracies, model

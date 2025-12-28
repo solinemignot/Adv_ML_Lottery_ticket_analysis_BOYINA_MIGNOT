@@ -1,0 +1,15 @@
+;Round;Pruning Percentage;Avg Test Accuracy (with training);Min Test Accuracy (with training);Max Test Accuracy (with training);Avg Time (min);Min Time (min);Max Time (min)
+0;Initial model;0.0;97.57666666666667;97.55;97.61;1.3605781700876023;1.3437056382497152;1.379858656724294
+1;Round 1;;;;;;;
+2;Round 2;;;;;;;
+3;Round 3;;;;;;;
+4;Round 4;;;;;;;
+5;Round 5;;;;;;;
+6;Round 6;;;;;;;
+7;Round 7;;;;;;;
+8;Round 8;;;;;;;
+9;Round 9;;;;;;;
+10;Round 10;;;;;;;
+11;Round 11;;;;;;;
+12;Round 12;;;;;;;
+13;One_shot;97.81592787377912;95.88;95.7;96.09;2.7408066815800134;2.7161356806755066;2.777058446407318

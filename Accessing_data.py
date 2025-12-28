@@ -10,7 +10,7 @@ def load_mnist(batch_size):
         transforms.ToTensor(), 
         transforms.Normalize((0.1307,), (0.3081,))
     ])
-
+    
     # IMPORTANT : download=True pour le cloud
     train_set = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
     test_set = datasets.MNIST(root='./data', train=False, download=True, transform=transform)
