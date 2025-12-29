@@ -1,15 +1,15 @@
-;Round;Pruning Percentage;Avg Test Accuracy (with training);Min Test Accuracy (with training);Max Test Accuracy (with training);Avg Time (min);Min Time (min);Max Time (min)
-0;Initial model;0.0;97.57666666666667;97.55;97.61;1.3605781700876023;1.3437056382497152;1.379858656724294
-1;Round 1;;;;;;;
-2;Round 2;;;;;;;
-3;Round 3;;;;;;;
-4;Round 4;;;;;;;
-5;Round 5;;;;;;;
-6;Round 6;;;;;;;
-7;Round 7;;;;;;;
-8;Round 8;;;;;;;
-9;Round 9;;;;;;;
-10;Round 10;;;;;;;
-11;Round 11;;;;;;;
-12;Round 12;;;;;;;
-13;One_shot;97.81592787377912;95.88;95.7;96.09;2.7408066815800134;2.7161356806755066;2.777058446407318
+;Round;Pruning Percentage;Avg Test Accuracy (with training);Min Test Accuracy (with training);Max Test Accuracy (with training);Avg Time (min);Min Time (min);Max Time (min);Avg Final Training Loss;Min Final Training Loss;Max Final Training Loss
+0;Initial model;0.0;92.54666666666667;92.29;92.87;0.15846724377738106;0.15689090490341187;0.16076078812281291;0.6230765685544791;0.6121197488713772;0.6394668129530359
+1;Round 1;;;;;;;;;;
+2;Round 2;;;;;;;;;;
+3;Round 3;;;;;;;;;;
+4;Round 4;;;;;;;;;;
+5;Round 5;;;;;;;;;;
+6;Round 6;;;;;;;;;;
+7;Round 7;;;;;;;;;;
+8;Round 8;;;;;;;;;;
+9;Round 9;;;;;;;;;;
+10;Round 10;;;;;;;;;;
+11;Round 11;;;;;;;;;;
+12;Round 12;;;;;;;;;;
+13;One_shot;97.81592787377912;88.65333333333335;88.56;88.79;0.3368081543180677;0.3362630844116211;0.3378642400105794;1.0100663566842991;0.9847965967147908;1.029130148507179

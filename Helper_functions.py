@@ -13,42 +13,42 @@ print(f"Helper functions loaded. User device: {device}")
 ########################### Helper functions #################################
 
 def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10, mask=None):
-    """
-    CORRECTION : Ajout de l'argument 'mask=None' pour fixer l'erreur TypeError.
-    Application stricte du masque sur les gradients.
-    """
-    # On s'assure que le modèle est sur le bon device
     model.to(device)
+
     for epoch in range(num_epochs):
-        epoch_loss = 0.0
         model.train()
-        running_loss = 0.0
+        epoch_loss = 0.0
+
         for images, labels in train_loader:
-            # --- GPU MAGIC : Envoi des données vers la carte graphique ---
             images, labels = images.to(device), labels.to(device)
-            
+
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
-            epoch_loss += loss.item()
             loss.backward()
-            
-            # --- MASQUAGE DES GRADIENTS (CORRIGÉ) ---
-            # On utilise l'argument 'mask' passé à la fonction.
-            # On force le gradient à 0 pour que les poids prunés ne changent pas.
+
+            # Mask gradients
             if mask is not None:
                 with torch.no_grad():
                     for name, param in model.named_parameters():
                         if name in mask:
-                            # On s'assure que le masque est sur le GPU
-                            param.grad *= mask[name].to(device)
-            
+                            param.grad.mul_(mask[name].to(device))
+
             optimizer.step()
-            running_loss += loss.item()
+
+            # Hard mask weights (CRITICAL)
+            if mask is not None:
+                with torch.no_grad():
+                    for name, param in model.named_parameters():
+                        if name in mask:
+                            param.mul_(mask[name].to(device))
+
+            epoch_loss += loss.item()
+
         epoch_loss /= len(train_loader)
-        return epoch_loss
+
+    return epoch_loss
         
-    
 
 def evaluate_the_model(model, test_loader):
     model.to(device)
