@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import copy
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,46 +15,72 @@ from Helper_functions import *
 
 # --- Méthode "Late Rewinding" (Reset à Epoch $k$) pour CIFAR-10 ---
 
+import time
+import torch
+import torch.nn as nn
+
+# Petite fonction helper pour calculer la Loss proprement sur tout le dataset
+def calculate_loss(model, loader, criterion):
+    model.eval()
+    running_loss = 0.0
+    total_samples = 0
+    with torch.no_grad():
+        for images, labels in loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item() * images.size(0)
+            total_samples += labels.size(0)
+    return running_loss / total_samples
+
 # --- A. Fonction Dense qui capture le "Checkpoint" (Theta_k) ---
 def dense_neural_network_CIFAR_Rewinding(df_accuracies, epochs=10, rewind_epoch=2, lr=0.1, optimizer_type="sgd"):
     print(f"\nStep 1: Training Dense Network with Rewinding capture at Epoch {rewind_epoch}...")
     
-    model = Conv2(output_size=10).to(device)
+    start_total = time.time()
     
-    # On charge les données
+    # Utilisation de num_classes=10
+    model = Conv2(num_classes=10).to(device)
+    
     batch_size = 60
     train_loader, test_loader = load_cifar(batch_size)
     criterion = nn.CrossEntropyLoss()
     
-    # Optimiseur
     if optimizer_type.lower() == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # 1. WARMUP : On entraîne jusqu'à l'époque de rewind
+    # 1. WARMUP
     print(f"   -> Warming up for {rewind_epoch} epochs...")
     training_the_model(model, train_loader, optimizer, criterion, num_epochs=rewind_epoch)
     
-    # 2. CAPTURE DU CHECKPOINT : Theta_k (l'état stabilisé)
+    # 2. CHECKPOINT
     theta_k = get_weights(model) 
     print(f"   -> Theta_{rewind_epoch} saved! (Checkpoint created)")
 
-    # 3. FIN DE L'ENTRAÎNEMENT DENSE
+    # 3. FIN DU TRAINING
     remaining_epochs = epochs - rewind_epoch
     if remaining_epochs > 0:
         training_the_model(model, train_loader, optimizer, criterion, num_epochs=remaining_epochs)
     
+    # Calcul des métriques finales
     dense_acc = evaluate_the_model(model, test_loader)
-    print(f"Initial dense accuracy : {dense_acc:.2f}%.")
+    dense_loss = calculate_loss(model, train_loader, criterion) # <--- On calcule la loss
+    
+    end_total = time.time()
+    duration = (end_total - start_total) / 60 
+
+    print(f"Initial dense accuracy : {dense_acc:.2f}%. Loss: {dense_loss:.4f}")
     
     df_accuracies.append({
         "Round": "Initial model", 
         "Pruning percentage": 0, 
-        "Test Accuracy (with training)": dense_acc
+        "Test Accuracy (with training)": dense_acc,
+        "Time (min)": duration,
+        "Final Training Loss": dense_loss # <--- CORRECTION ICI
     })
     
-    # IMPORTANT : On retourne theta_k au lieu de theta_0 !
     return df_accuracies, model, get_weights(model), theta_k, train_loader, test_loader
 
 
@@ -60,7 +88,7 @@ def dense_neural_network_CIFAR_Rewinding(df_accuracies, epochs=10, rewind_epoch=
 def iterative_pruning_CIFAR_Rewinding(total_prune_percent=90, rounds=8, epochs_per_round=10, rewind_epoch=2, lr=0.1, optimizer_type="sgd"):
     df_accuracies = []
     
-    # Appel de la fonction Dense SPÉCIALE qui renvoie theta_k
+    # Appel de la fonction Dense (qui remplit déjà la ligne "Initial model")
     df_accuracies, model, thetaj, theta_k, train_loader, test_loader = dense_neural_network_CIFAR_Rewinding(
         df_accuracies, epochs=epochs_per_round, rewind_epoch=rewind_epoch, lr=lr, optimizer_type=optimizer_type
     )
@@ -73,6 +101,7 @@ def iterative_pruning_CIFAR_Rewinding(total_prune_percent=90, rounds=8, epochs_p
     current_prune_percent = 0
     
     for pruning_round in range(rounds):
+        start_round = time.time()
         print(f"\n--- Round {pruning_round + 1}/{rounds} ---")
         
         current_prune_percent += remaining_weights_percent * prune_percent
@@ -81,12 +110,12 @@ def iterative_pruning_CIFAR_Rewinding(total_prune_percent=90, rounds=8, epochs_p
         # 1. Pruning
         mask = prune_by_magnitude(model, current_prune_percent*100)
         
-        # 2. RESET : On utilise theta_k (le checkpoint) au lieu de l'initialisation
+        # 2. RESET (Theta_k)
         model = create_winning_ticket(model, mask, theta_k)
         
         actual_sparsity = calculate_actual_prune_percent(model)
-        print(f"Sparsity: {actual_sparsity:.2f}%")
         
+        # Eval avant retrain (optionnel)
         acc = evaluate_the_model(model, test_loader)
         
         # 3. Retraining
@@ -95,22 +124,27 @@ def iterative_pruning_CIFAR_Rewinding(total_prune_percent=90, rounds=8, epochs_p
         else:
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        # On utilise le masque pour figer les zéros
         training_the_model(model, train_loader, optimizer, criterion, epochs_per_round, mask=mask)
         
+        # Eval après retrain
         acc_post_training = evaluate_the_model(model, test_loader)
-        print(f"Accuracy after retraining: {acc_post_training:.2f}%")
+        final_loss = calculate_loss(model, train_loader, criterion) # <--- On calcule la loss ici aussi
+        
+        end_round = time.time()
+        duration = (end_round - start_round) / 60
+        
+        print(f"Accuracy: {acc_post_training:.2f}%. Loss: {final_loss:.4f}")
         
         df_accuracies.append({
             "Round": f"Round {pruning_round + 1}", 
             "Pruning percentage": actual_sparsity, 
             "Test Accuracy (no retraining)": acc, 
-            "Test Accuracy (with training)": acc_post_training
+            "Test Accuracy (with training)": acc_post_training,
+            "Time (min)": duration,
+            "Final Training Loss": final_loss # <--- CORRECTION ICI
         })
             
     return df_accuracies, model
-
-
 
 # ==============================================================================
 #  EXTENSIONS STRONG LTH (Edge-Popup Algorithm)
