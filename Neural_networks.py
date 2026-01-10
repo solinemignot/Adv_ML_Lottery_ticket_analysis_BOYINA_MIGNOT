@@ -108,13 +108,12 @@ def dense_neural_network_MNIST(df_accuracies, beginning, epochs=10, lr=0.01, opt
 
     criterion = nn.CrossEntropyLoss()
     
-    # Selection de l'optimiseur
     if optimizer_type.lower() == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     else:
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # Entraînement initial (sans masque)
+    #Initial training 
     final_loss = training_the_model(model, TRAIN_LOADER_MNIST, optimizer, criterion, num_epochs=epochs)
     
     dense_acc = evaluate_the_model(model, TEST_LOADER_MNIST)
@@ -126,22 +125,32 @@ def dense_neural_network_MNIST(df_accuracies, beginning, epochs=10, lr=0.01, opt
         "Test Accuracy (with training)": dense_acc,
         "Time (min)": (time.time() - beginning) / 60,
         "Final Training Loss": final_loss
-
     })
     
     return df_accuracies, model, get_weights(model), theta_0, TRAIN_LOADER_MNIST, TEST_LOADER_MNIST
 
 
 def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.01, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
+    """
+    The main algorithm of the file. It does the iterative training of the MNIST models, 
+    with different parameters:
+    
+    :param total_prune_percent: the final pruning percentage of the model (usually around 95%)
+    :param rounds: the amount of times the algorithm is reran. Allows to do the error bars.
+    :param epochs_per_round: Number of epochs per round
+    :param LTH: If we do the Lottery ticket hypothesis
+    :param strategy_1: If we do strategy 1 or 2
+    :param one_shot: if we do one shot pruning
+    """
     df_accuracies = []
     beginning = time.time()
 
-    # Appel correct avec tous les arguments
+    #Creates the initial dense model and the dataframe we will use for the comparisons
     df_accuracies, model, thetaj, theta0, TRAIN_LOADER_MNIST, TEST_LOADER_MNIST = dense_neural_network_MNIST(
         df_accuracies, beginning, epochs=epochs_per_round, lr=lr, optimizer_type=optimizer_type
     )
     
-    print("\nStep 4: Creating the Winning ticket")
+    print("\nCreating the Winning ticket")
     criterion = nn.CrossEntropyLoss()
 
     if not one_shot and (total_prune_percent!=0):
@@ -158,7 +167,7 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
             
             mask = prune_by_magnitude(model, current_prune_percent*100)
             
-            # Reset des poids selon la stratégie
+            # Resetting of the weights
             if LTH: 
                 if strategy_1 or (pruning_round + 1 == rounds):
                     model = create_winning_ticket(model, mask, theta0)
@@ -227,9 +236,13 @@ def iterative_pruning_MNIST(total_prune_percent=90, rounds=8, epochs_per_round=1
     return df_accuracies, model
 
 
-########################### LOGIQUE CIFAR #################################
+########################### CIFAR #################################
 
 def dense_neural_network_CIFAR(df_accuracies, beginning, epochs=10, lr=0.01, optimizer_type="sgd"):
+    """
+    Creates the original dense model for CIFAR.
+    """
+
     print("\nStep 1 and 2: training the randomly initialized neural network for CIFAR.")
     
     model = Conv2(num_classes=10)
@@ -263,6 +276,17 @@ def dense_neural_network_CIFAR(df_accuracies, beginning, epochs=10, lr=0.01, opt
 
 
 def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=10, lr=0.01, LTH=True, strategy_1=True, one_shot=False, optimizer_type="sgd"):
+    """
+    The main algorithm of the file. It does the iterative training of the CIFAR models, 
+    with different parameters:
+    
+    :param total_prune_percent: the final pruning percentage of the model (usually around 95%)
+    :param rounds: the amount of times the algorithm is reran. Allows to do the error bars.
+    :param epochs_per_round: Number of epochs per round
+    :param LTH: If we do the Lottery ticket hypothesis
+    :param strategy_1: If we do strategy 1 or 2
+    :param one_shot: if we do one shot pruning
+    """
     df_accuracies = []
     beginning = time.time()
 
@@ -270,7 +294,7 @@ def iterative_pruning_CIFAR(total_prune_percent=90, rounds=8, epochs_per_round=1
         df_accuracies, beginning, epochs=epochs_per_round, lr=lr, optimizer_type=optimizer_type
     )
     
-    print("\nStep 4: Creating the Winning ticket")
+    print("\nCreating the Winning ticket")
     criterion = nn.CrossEntropyLoss()
 
     if not one_shot and (total_prune_percent!=0):

@@ -63,6 +63,11 @@ def comparing_methods_initialization_after_pruning(amount_of_repeats, rounds, me
 
 
 def comparing_methods_plotting(df1, df2, method_1_name, method_2_name, dataset_name, comp_col='Test Accuracy (with training)'):
+    """
+    Plots the comparison graphs of method 1 and method 2.
+    The comparable columns are : Test Accuracy, Length of execution and Final Training Loss.
+    """
+
     plt.figure(figsize=(10, 6))
 
     x1, y1 = df1['Pruning Percentage'], df1[f'Avg {comp_col}']

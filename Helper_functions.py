@@ -9,10 +9,13 @@ from Accessing_data import load_mnist, load_cifar
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Helper functions loaded. User device: {device}")
 
-# --- 1. DÉTECTION GLOBALE DU GPU ---
 ########################### Helper functions #################################
 
 def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10, mask=None):
+    """
+    In this function, the model is trained during num_epochs epochs.
+    The output of the function the final training loss after those epochs. 
+    """
     model.to(device)
 
     for epoch in range(num_epochs):
@@ -51,6 +54,9 @@ def training_the_model(model, train_loader, optimizer, criterion, num_epochs=10,
         
 
 def evaluate_the_model(model, test_loader):
+    """
+    This function outputs the test accuract of the model.
+    """
     model.to(device)
     model.eval()
     correct = 0
@@ -68,17 +74,22 @@ def evaluate_the_model(model, test_loader):
     return acc
 
 def get_weights(model):
-    # OPTIMISATION MEMOIRE : On stocke les sauvegardes (Theta0, Thetaj) sur le CPU.
     return {name: param.clone().detach().cpu() for name, param in model.named_parameters()}
 
 def apply_mask(model, mask):
-    # Utile pour forcer l'application du masque hors entraînement
+    """
+    Given the mask, it masks those weights for the model.
+    """
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name in mask:
                 param.data *= mask[name].to(device)
 
 def calculate_actual_prune_percent(model):
+    """
+    To calculate the pruning percentage. Counts the amount of weights that are null.
+    That way, we can check the masking is going well.
+    """
     total_weights = sum(p.numel() for p in model.parameters() if p.dim() > 1)
     zero_weights = sum((p == 0).sum().item() for p in model.parameters() if p.dim() > 1)
     if total_weights == 0: return 0
@@ -91,50 +102,35 @@ def count_zeros(model):
 ########################### Lottery Ticket Algorithm functions #################################
 
 def prune_by_magnitude(model, prune_percent=20):
-    """
-    Layer-wise pruning qui respecte la règle du papier.
-    """
     mask = {}
     
-    # 1. Identification dernière couche
     last_weight_layer_name = None
     for name, param in model.named_parameters():
         if param.dim() > 1:
             last_weight_layer_name = name
             
-    # 2. Pruning
-    # print(f"   [Pruning Debug] Target Global Percent: {prune_percent:.2f}%")
-    
+    #Pruning
     for name, param in model.named_parameters():
         if param.dim() > 1:
             current_prune_percent = prune_percent
-            
-            # Gestion couche de sortie (souvent élaguée moins agressivement ou pas du tout)
             if name == last_weight_layer_name:
                 current_prune_percent = prune_percent / 2
-                # print(f"   -> Output Layer detected ({name}): Pruning half ({current_prune_percent:.2f}%)")
-            
-            # Calcul du nombre de poids à couper
             k = int(param.numel() * current_prune_percent / 100)
             
             if k > 0:
-                # On utilise abs() pour la magnitude
                 threshold = torch.topk(param.data.abs().view(-1), k, largest=False).values.max()
-                # 1 si > seuil, 0 sinon
                 mask[name] = (param.data.abs() > threshold).float().to(device)
-                
             else:
                 mask[name] = torch.ones_like(param).to(device)
                 
         else:
-            # On garde les biais et autres paramètres 1D
             mask[name] = torch.ones_like(param).to(device)
             
     return mask
 
 def create_winning_ticket(model, mask, theta):
     """
-    Réinitialise les poids à leur valeur d'origine (Theta 0) tout en appliquant le masque.
+    Reinitializes the model to the theta weights.
     """
     with torch.no_grad():
         for name, param in model.named_parameters():
@@ -150,18 +146,14 @@ def create_winning_ticket(model, mask, theta):
 
 def randomly_reinitialize(model, mask):
     """
-    Réinitialise aléatoirement le réseau (Random Ticket) mais garde la structure du masque.
+    Randomly reinitializes the weights that are not masked in the model.
     """
-    # 1. On réinitialise tout le module proprement
     def init_weights(m):
         if isinstance(m, (nn.Linear, nn.Conv2d)):
             nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-    
     model.apply(init_weights)
-            
-    # 2. On réapplique les zéros du masque
     with torch.no_grad():
         for name, param in model.named_parameters():
             if name in mask:
