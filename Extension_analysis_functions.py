@@ -14,9 +14,8 @@ from Neural_networks import *
 from Helper_functions import *
 
 
-# ==============================================================================
+####################################################################
 #  EXTENSIONS : "Late Rewinding" (Reset at Epoch k) for CIFAR-10 ---
-# ==============================================================================
 
 
 def calculate_loss(model, loader, criterion):
@@ -146,9 +145,7 @@ def iterative_pruning_CIFAR_Rewinding(total_prune_percent=90, rounds=8, epochs_p
 
 
 
-# ==============================================================================
-#  EXTENSIONS STRONG LTH (Edge-Popup Algorithm)
-# ==============================================================================
+#########  EXTENSIONS STRONG LTH (Edge-Popup Algorithm) ###############
 
 class GetSubnet(torch.autograd.Function):
     """
